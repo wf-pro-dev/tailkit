@@ -1,5 +1,3 @@
-//go:build tailscale
-
 package tailkit
 
 import (
@@ -332,7 +330,9 @@ func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, err
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		var errBody struct{ Error string `json:"error"` }
+		var errBody struct {
+			Error string `json:"error"`
+		}
 		_ = json.NewDecoder(resp.Body).Decode(&errBody)
 		return SendResult{}, mapAPIError(resp.StatusCode, "/files", errBody.Error)
 	}
@@ -471,7 +471,9 @@ func (dc *DockerClient) Container(ctx context.Context, id string) (map[string]an
 }
 
 func (dc *DockerClient) Logs(ctx context.Context, id string, tail int) (string, error) {
-	var resp struct{ Logs string `json:"logs"` }
+	var resp struct {
+		Logs string `json:"logs"`
+	}
 	path := fmt.Sprintf("%s/containers/%s/logs?tail=%d",
 		dockerBase, url.PathEscape(id), tail)
 	return resp.Logs, dc.node.do(ctx, http.MethodGet, path, nil, &resp)
