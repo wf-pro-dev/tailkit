@@ -262,6 +262,16 @@ func (n *NodeClient) Files() *FilesClient {
 	return &FilesClient{node: n}
 }
 
+// List returns the directory listing for path on the node.
+func (fc *FilesClient) List(ctx context.Context, dirPath string) ([]DirEntry, error) {
+	var entries []DirEntry
+	if err := fc.node.do(ctx, http.MethodGet,
+		"/files?dir="+url.QueryEscape(dirPath), nil, &entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
 // Read returns the content of a file on the node as a string.
 func (fc *FilesClient) Read(ctx context.Context, path string) (string, error) {
 	data, err := fc.node.doRaw(ctx, http.MethodGet,
@@ -286,16 +296,6 @@ func (fc *FilesClient) Download(ctx context.Context, remotePath, localPath strin
 		return err
 	}
 	return writeLocalFile(localPath, data)
-}
-
-// List returns the directory listing for path on the node.
-func (fc *FilesClient) List(ctx context.Context, dirPath string) ([]DirEntry, error) {
-	var entries []DirEntry
-	if err := fc.node.do(ctx, http.MethodGet,
-		"/files?dir="+url.QueryEscape(dirPath), nil, &entries); err != nil {
-		return nil, err
-	}
-	return entries, nil
 }
 
 // DirEntry is a single entry in a directory listing.
