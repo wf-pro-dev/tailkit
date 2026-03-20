@@ -191,26 +191,6 @@ func (n *NodeClient) HasTool(ctx context.Context, name, minVersion string) (bool
 
 // ─── Exec ─────────────────────────────────────────────────────────────────────
 
-// Exec fires a command on the node and returns immediately with a job ID.
-// The command runs asynchronously — poll with ExecJob to get the result.
-func (n *NodeClient) Exec(ctx context.Context, tool, command string, args map[string]string) (Job, error) {
-	var body io.Reader
-	if len(args) > 0 {
-		data, err := json.Marshal(args)
-		if err != nil {
-			return Job{}, fmt.Errorf("tailkit: marshal args: %w", err)
-		}
-		body = bytes.NewReader(data)
-	}
-
-	var job Job
-	path := fmt.Sprintf("/exec/%s/%s", url.PathEscape(tool), url.PathEscape(command))
-	if err := n.do(ctx, http.MethodPost, path, body, &job); err != nil {
-		return Job{}, err
-	}
-	return job, nil
-}
-
 // ExecJob polls for the result of a previously submitted job.
 func (n *NodeClient) ExecJob(ctx context.Context, jobID string) (JobResult, error) {
 	var result JobResult
@@ -222,12 +202,7 @@ func (n *NodeClient) ExecJob(ctx context.Context, jobID string) (JobResult, erro
 
 // ExecWait fires a command and blocks until it completes or ctx is cancelled.
 // Cancelling ctx stops polling but does not cancel the running job on the node.
-func (n *NodeClient) ExecWait(ctx context.Context, tool, command string, args map[string]string) (JobResult, error) {
-	job, err := n.Exec(ctx, tool, command, args)
-	if err != nil {
-		return JobResult{}, err
-	}
-
+func (n *NodeClient) ExecWait(ctx context.Context, jobID string) (JobResult, error) {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -236,7 +211,7 @@ func (n *NodeClient) ExecWait(ctx context.Context, tool, command string, args ma
 		case <-ctx.Done():
 			return JobResult{}, ctx.Err()
 		case <-ticker.C:
-			result, err := n.ExecJob(ctx, job.JobID)
+			result, err := n.ExecJob(ctx, jobID)
 			if err != nil {
 				return JobResult{}, err
 			}
