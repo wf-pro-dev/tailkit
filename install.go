@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 )
 
 const (
@@ -111,117 +110,7 @@ func validateTool(t Tool) error {
 		return fmt.Errorf("Tool.TsnetHost must not be empty")
 	}
 
-	names := make(map[string]bool)
-	for i, cmd := range t.Commands {
-		if err := validateCommand(cmd, i); err != nil {
-			return err
-		}
-		if names[cmd.Name] {
-			return fmt.Errorf("Command[%d]: duplicate name %q", i, cmd.Name)
-		}
-		names[cmd.Name] = true
-	}
 	return nil
-}
-
-func validateCommand(cmd Command, idx int) error {
-	prefix := fmt.Sprintf("Command[%d] %q", idx, cmd.Name)
-
-	if cmd.Name == "" {
-		return fmt.Errorf("Command[%d]: Name must not be empty", idx)
-	}
-	if !validName(cmd.Name) {
-		return fmt.Errorf("%s: Name must match [a-zA-Z0-9_-]+", prefix)
-	}
-	if len(cmd.ExecParts) == 0 {
-		return fmt.Errorf("%s: ExecParts must not be empty", prefix)
-	}
-	if cmd.ExecParts[0] == "" {
-		return fmt.Errorf("%s: ExecParts[0] (binary path) must not be empty", prefix)
-	}
-	// Verify the binary exists on disk at install time.
-	if _, err := os.Stat(cmd.ExecParts[0]); err != nil {
-		return fmt.Errorf("%s: ExecParts[0] binary %q not found: %w", prefix, cmd.ExecParts[0], err)
-	}
-	if cmd.Timeout <= 0 {
-		return fmt.Errorf("%s: Timeout must be a positive duration", prefix)
-	}
-	if cmd.ACLCap == "" {
-		return fmt.Errorf("%s: ACLCap must not be empty", prefix)
-	}
-
-	argNames := make(map[string]bool)
-	for j, arg := range cmd.Args {
-		if err := validateArg(arg, idx, j); err != nil {
-			return err
-		}
-		if argNames[arg.Name] {
-			return fmt.Errorf("%s: Arg[%d]: duplicate name %q", prefix, j, arg.Name)
-		}
-		argNames[arg.Name] = true
-	}
-
-	// Verify that every {{.name}} slot in ExecParts refers to a declared arg.
-	for _, part := range cmd.ExecParts {
-		names := extractTemplateVars(part)
-		for _, name := range names {
-			if !argNames[name] {
-				return fmt.Errorf("%s: ExecParts template variable {{.%s}} has no matching Arg declaration", prefix, name)
-			}
-		}
-	}
-
-	return nil
-}
-
-func validateArg(arg Arg, cmdIdx, argIdx int) error {
-	prefix := fmt.Sprintf("Command[%d].Arg[%d] %q", cmdIdx, argIdx, arg.Name)
-
-	if arg.Name == "" {
-		return fmt.Errorf("Command[%d].Arg[%d]: Name must not be empty", cmdIdx, argIdx)
-	}
-	if !validName(arg.Name) {
-		return fmt.Errorf("%s: Name must match [a-zA-Z0-9_-]+", prefix)
-	}
-	if arg.Type == "" {
-		return fmt.Errorf("%s: Type must not be empty (use \"string\", \"int\", or \"bool\")", prefix)
-	}
-	switch arg.Type {
-	case "string", "int", "bool":
-		// valid
-	default:
-		return fmt.Errorf("%s: Type %q is not valid (use \"string\", \"int\", or \"bool\")", prefix, arg.Type)
-	}
-	if arg.Pattern != "" {
-		if _, err := regexp.Compile(arg.Pattern); err != nil {
-			return fmt.Errorf("%s: Pattern %q is not a valid regular expression: %w", prefix, arg.Pattern, err)
-		}
-	}
-	return nil
-}
-
-// extractTemplateVars returns the variable names referenced in a text/template
-// expression string, e.g. "{{.container}}" → ["container"].
-// This is a simple parser sufficient for the subset of templates tailkit uses.
-func extractTemplateVars(s string) []string {
-	var vars []string
-	for {
-		start := strings.Index(s, "{{.")
-		if start == -1 {
-			break
-		}
-		s = s[start+3:]
-		end := strings.Index(s, "}}")
-		if end == -1 {
-			break
-		}
-		name := strings.TrimSpace(s[:end])
-		if name != "" {
-			vars = append(vars, name)
-		}
-		s = s[end+2:]
-	}
-	return vars
 }
 
 // ─── Atomic write ─────────────────────────────────────────────────────────────

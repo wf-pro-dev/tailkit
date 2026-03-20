@@ -2,7 +2,6 @@ package tailkit
 
 import (
 	"errors"
-	"time"
 )
 
 // ─── Error sentinels ─────────────────────────────────────────────────────────
@@ -50,24 +49,6 @@ type Arg struct {
 	Pattern string `json:"pattern,omitempty"`
 }
 
-// Command is a single executable action registered by a Tool.
-type Command struct {
-	// Name is the unique identifier for this command within the tool.
-	Name string `json:"name"`
-	// Description is shown in the tailkitd tool registry listing.
-	Description string `json:"description"`
-	// ACLCap is the Tailscale ACL capability required to invoke this command.
-	ACLCap string `json:"acl_cap"`
-	// ExecParts is the command and arguments as a pre-split slice.
-	// Template variables (e.g. "{{.container}}") are substituted per-element
-	// using text/template before execution — never joined into a single string.
-	ExecParts []string `json:"exec_parts"`
-	// Timeout is the maximum duration the command may run before being killed.
-	Timeout time.Duration `json:"timeout"`
-	// Args declares the parameters this command accepts.
-	Args []Arg `json:"args,omitempty"`
-}
-
 // Tool is the registration record written to /etc/tailkitd/tools/{name}.json
 // by tailkit.Install and read by tailkitd to populate its tool registry.
 type Tool struct {
@@ -77,8 +58,6 @@ type Tool struct {
 	Version string `json:"version"`
 	// TsnetHost is the tsnet hostname this tool registers on the tailnet.
 	TsnetHost string `json:"tsnet_host"`
-	// Commands lists all commands this tool registers for remote invocation.
-	Commands []Command `json:"commands"`
 }
 
 // NodeInfo is returned by Discover — it identifies a tailnet peer that has a
