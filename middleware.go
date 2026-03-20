@@ -34,13 +34,22 @@ func CallerFromContext(ctx context.Context) (CallerIdentity, bool) {
 func AuthMiddleware(srv *Server) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+			remoteAddr := r.Header.Get("X-Forwarded-For")
+			if remoteAddr == "" {
+				remoteAddr = r.Header.Get("X-Real-IP")
+				if remoteAddr == "" {
+					remoteAddr = r.RemoteAddr
+				}
+			}
+
 			lc := srv.localClient()
 			if lc == nil {
 				http.Error(w, "tailkit: local client unavailable", http.StatusInternalServerError)
 				return
 			}
 
-			who, err := lc.WhoIs(r.Context(), r.RemoteAddr)
+			who, err := lc.WhoIs(r.Context(), remoteAddr)
 			if err != nil {
 				http.Error(w, "tailkit: unauthorized — not a tailnet peer", http.StatusUnauthorized)
 				return
