@@ -133,6 +133,9 @@ type SendResult struct {
 	BytesWritten int64 `json:"bytes_written"`
 	// DestMachine is the hostname of the machine the file was sent to.
 	DestMachine string `json:"dest_machine"`
+
+	//Error is set when the file was not successfully sent.
+	Error string `json:"error,omitempty"`
 }
 
 // DirEntry is a single entry in a directory listing.
