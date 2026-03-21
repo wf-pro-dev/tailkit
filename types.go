@@ -2,6 +2,7 @@ package tailkit
 
 import (
 	"errors"
+	"time"
 )
 
 // ─── Error sentinels ─────────────────────────────────────────────────────────
@@ -123,10 +124,22 @@ type SendDirRequest struct {
 
 // SendResult is the response from a Send or SendDir operation.
 type SendResult struct {
+	LocalPath string `json:"local_path"`
+	// Success indicates whether the file was successfully sent.
+	Success bool `json:"success"`
 	// WrittenTo is the absolute path the file was written to on the node.
 	WrittenTo string `json:"written_to"`
 	// BytesWritten is the number of bytes written.
 	BytesWritten int64 `json:"bytes_written"`
-	// JobID is set when a post_recv hook was triggered; poll it with ExecJob.
-	JobID string `json:"job_id,omitempty"`
+	// DestMachine is the hostname of the machine the file was sent to.
+	DestMachine string `json:"dest_machine"`
+}
+
+// DirEntry is a single entry in a directory listing.
+type DirEntry struct {
+	Name    string    `json:"name"`
+	Size    int64     `json:"size"`
+	IsDir   bool      `json:"is_dir"`
+	ModTime time.Time `json:"mod_time"`
+	Mode    string    `json:"mode"`
 }

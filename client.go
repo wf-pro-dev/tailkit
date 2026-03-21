@@ -273,15 +273,6 @@ func (fc *FilesClient) Download(ctx context.Context, remotePath, localPath strin
 	return writeLocalFile(localPath, data)
 }
 
-// DirEntry is a single entry in a directory listing.
-type DirEntry struct {
-	Name    string    `json:"name"`
-	Size    int64     `json:"size"`
-	IsDir   bool      `json:"is_dir"`
-	ModTime time.Time `json:"mod_time"`
-	Mode    string    `json:"mode"`
-}
-
 // Send pushes a local file to the node. Returns a SendResult; if a post_recv
 // hook was triggered, SendResult.JobID is set and can be polled with ExecJob.
 func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, error) {

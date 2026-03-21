@@ -2,7 +2,10 @@ module github.com/wf-pro-dev/tailkit
 
 go 1.26.1
 
-require tailscale.com v1.96.2
+require (
+	golang.org/x/sync v0.19.0
+	tailscale.com v1.96.2
+)
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
@@ -55,7 +58,6 @@ require (
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/oauth2 v0.33.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/term v0.38.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
