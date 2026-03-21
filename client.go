@@ -276,22 +276,31 @@ func (fc *FilesClient) Download(ctx context.Context, remotePath, localPath strin
 // Send pushes a local file to the node. Returns a SendResult; if a post_recv
 // hook was triggered, SendResult.JobID is set and can be polled with ExecJob.
 func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, error) {
+
+	failResult := SendResult{
+		LocalPath:    req.LocalPath,
+		DestMachine:  n.hostname,
+		Success:      false,
+		WrittenTo:    req.DestPath,
+		BytesWritten: 0,
+	}
+
 	data, err := readLocalFile(req.LocalPath)
 	if err != nil {
-		return SendResult{}, fmt.Errorf("tailkit: read %s: %w", req.LocalPath, err)
+		return failResult, fmt.Errorf("tailkit: read %s: %w", req.LocalPath, err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx,
 		http.MethodPost, n.baseURL()+"/files", bytes.NewReader(data))
 	if err != nil {
-		return SendResult{}, err
+		return failResult, err
 	}
 	httpReq.Header.Set("X-Dest-Path", req.DestPath)
 	httpReq.Header.Set("Content-Type", "application/octet-stream")
 
 	resp, err := n.httpClient().Do(httpReq)
 	if err != nil {
-		return SendResult{}, fmt.Errorf("tailkit: send %s: %w", req.LocalPath, err)
+		return failResult, fmt.Errorf("tailkit: send %s: %w", req.LocalPath, err)
 	}
 	defer resp.Body.Close()
 
@@ -300,13 +309,18 @@ func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, err
 			Error string `json:"error"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&errBody)
-		return SendResult{}, mapAPIError(resp.StatusCode, "/files", errBody.Error)
+		return failResult, mapAPIError(resp.StatusCode, "/files", errBody.Error)
 	}
 
 	var result SendResult
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return SendResult{}, fmt.Errorf("tailkit: decode send result: %w", err)
+		return failResult, fmt.Errorf("tailkit: decode send result: %w", err)
 	}
+
+	result.LocalPath = req.LocalPath
+	result.DestMachine = n.hostname
+	result.Success = true
+
 	return result, nil
 }
 
