@@ -287,12 +287,14 @@ func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, err
 
 	data, err := readLocalFile(req.LocalPath)
 	if err != nil {
+		failResult.Error = err.Error()
 		return failResult, fmt.Errorf("tailkit: read %s: %w", req.LocalPath, err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx,
 		http.MethodPost, n.baseURL()+"/files", bytes.NewReader(data))
 	if err != nil {
+		failResult.Error = err.Error()
 		return failResult, err
 	}
 	httpReq.Header.Set("X-Dest-Path", req.DestPath)
@@ -300,6 +302,7 @@ func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, err
 
 	resp, err := n.httpClient().Do(httpReq)
 	if err != nil {
+		failResult.Error = err.Error()
 		return failResult, fmt.Errorf("tailkit: send %s: %w", req.LocalPath, err)
 	}
 	defer resp.Body.Close()
@@ -309,11 +312,13 @@ func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, err
 			Error string `json:"error"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&errBody)
+		failResult.Error = errBody.Error
 		return failResult, mapAPIError(resp.StatusCode, "/files", errBody.Error)
 	}
 
 	var result SendResult
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		failResult.Error = err.Error()
 		return failResult, fmt.Errorf("tailkit: decode send result: %w", err)
 	}
 
