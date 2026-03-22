@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -298,9 +299,12 @@ func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, err
 		failResult.Error = err.Error()
 		return failResult, err
 	}
-	httpReq.Header.Set("X-Dest-Path", req.DestPath)
-	httpReq.Header.Set("X-Tool", req.ToolName)
-	httpReq.Header.Set("Content-Type", "application/octet-stream")
+	if req.DestPath != "" {
+		httpReq.Header.Set("X-Dest-Path", req.DestPath)
+	} else {
+		httpReq.Header.Set("X-Tool", req.ToolName)
+		httpReq.Header.Set("X-FileName", filepath.Base(req.LocalPath))
+	}
 
 	resp, err := n.httpClient().Do(httpReq)
 	if err != nil {
