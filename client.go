@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -279,6 +278,7 @@ func (fc *FilesClient) Download(ctx context.Context, remotePath, localPath strin
 func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, error) {
 
 	failResult := SendResult{
+		Filename:     req.Filename,
 		ToolName:     req.ToolName,
 		LocalPath:    req.LocalPath,
 		DestMachine:  n.hostname,
@@ -303,7 +303,7 @@ func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, err
 		httpReq.Header.Set("X-Dest-Path", req.DestPath)
 	} else {
 		httpReq.Header.Set("X-Tool", req.ToolName)
-		httpReq.Header.Set("X-FileName", filepath.Base(req.LocalPath))
+		httpReq.Header.Set("X-Filename", req.Filename)
 	}
 
 	resp, err := n.httpClient().Do(httpReq)

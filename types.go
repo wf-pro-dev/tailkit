@@ -110,6 +110,8 @@ type JobResult struct {
 type SendRequest struct {
 	// ToolName is the name of the tool that sent the file.
 	ToolName string `json:"tool_name"`
+	// Filename is the name of the file that was sent.
+	Filename string `json:"filename"`
 	// LocalPath is the absolute path to the file on the caller's machine.
 	LocalPath string
 	// DestPath is the absolute path the file should be written to on the node.
@@ -120,6 +122,8 @@ type SendRequest struct {
 type SendDirRequest struct {
 	// ToolName is the name of the tool that sent the directory.
 	ToolName string `json:"tool_name"`
+	// Filename is the name of the file that was sent.
+	Filename string `json:"filename"`
 	// LocalDir is the absolute path to the source directory on the caller's machine.
 	LocalDir string
 	// DestPath is the absolute destination directory path on the node.
@@ -130,6 +134,9 @@ type SendDirRequest struct {
 type SendResult struct {
 	// ToolName is the name of the tool that sent the file.
 	ToolName string `json:"tool_name"`
+
+	// Filename is the name of the file that was sent.
+	Filename string `json:"filename"`
 
 	LocalPath string `json:"local_path"`
 	// Success indicates whether the file was successfully sent.
