@@ -278,6 +278,7 @@ func (fc *FilesClient) Download(ctx context.Context, remotePath, localPath strin
 func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, error) {
 
 	failResult := SendResult{
+		ToolName:     req.ToolName,
 		LocalPath:    req.LocalPath,
 		DestMachine:  n.hostname,
 		Success:      false,
@@ -298,6 +299,7 @@ func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, err
 		return failResult, err
 	}
 	httpReq.Header.Set("X-Dest-Path", req.DestPath)
+	httpReq.Header.Set("X-Tool", req.ToolName)
 	httpReq.Header.Set("Content-Type", "application/octet-stream")
 
 	resp, err := n.httpClient().Do(httpReq)
