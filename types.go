@@ -3,6 +3,9 @@ package tailkit
 import (
 	"errors"
 	"time"
+
+	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/tailcfg"
 )
 
 // ─── Error sentinels ─────────────────────────────────────────────────────────
@@ -61,15 +64,19 @@ type Tool struct {
 	TsnetHost string `json:"tsnet_host"`
 }
 
-// NodeInfo is returned by Discover — it identifies a tailnet peer that has a
+// TailscaleNode is returned by Discover — it identifies a tailnet peer that has a
+
 // specific tool installed.
-type NodeInfo struct {
-	// Name is the Tailscale hostname of the node.
-	Name string
-	// TailscaleIP is the node's Tailscale IP address (100.x.x.x).
-	TailscaleIP string
-	// Tool is the matching Tool entry found on the node.
-	Tool Tool
+type Peer struct {
+	Status   ipnstate.PeerStatus   `json:"status"`
+	Location tailcfg.MachineStatus `json:"location"`
+
+	Tailkit *TailkitPeer `json:"tailkit"`
+}
+
+type TailkitPeer struct {
+	Status ipnstate.PeerStatus `json:"status"`
+	Tools  []Tool              `json:"tools"`
 }
 
 // ─── Job types ────────────────────────────────────────────────────────────────
@@ -159,3 +166,13 @@ type DirEntry struct {
 	ModTime time.Time `json:"mod_time"`
 	Mode    string    `json:"mode"`
 }
+
+// ---- Docker types ────────────────────────────────────────────────────
+
+type ComposeService struct {
+	Name        string   `json:"name"`
+	Status      string   `json:"status"`
+	ConfigFiles []string `json:"config_files"`
+}
+
+// ---- Systemd types ────────────────────────────────────────────────────

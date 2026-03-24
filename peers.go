@@ -8,19 +8,19 @@ import (
 
 // Discover finds all online tailnet peers that have the named tool installed.
 // An empty minVersion matches any version.
-func Discover(ctx context.Context, srv *Server, toolName string) ([]NodeInfo, error) {
+func Discover(ctx context.Context, srv *Server, toolName string) ([]Peer, error) {
 	return DiscoverVersion(ctx, srv, toolName, "")
 }
 
 // DiscoverVersion is like Discover but requires at least minVersion.
-func DiscoverVersion(ctx context.Context, srv *Server, toolName, minVersion string) ([]NodeInfo, error) {
-	peers, err := onlinePeers(ctx, srv)
+func DiscoverVersion(ctx context.Context, srv *Server, toolName, minVersion string) ([]Peer, error) {
+	peers, err := OnlinePeers(ctx, srv)
 	if err != nil {
 		return nil, err
 	}
 
 	type result struct {
-		info NodeInfo
+		info Peer
 		ok   bool
 	}
 
@@ -33,7 +33,7 @@ func DiscoverVersion(ctx context.Context, srv *Server, toolName, minVersion stri
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			node := Node(srv, peer.hostname)
+			node := Node(srv, peer.Status.HostName)
 			tools, err := node.Tools(ctx)
 			if err != nil {
 				results <- result{}
@@ -47,12 +47,8 @@ func DiscoverVersion(ctx context.Context, srv *Server, toolName, minVersion stri
 					continue
 				}
 				results <- result{
-					info: NodeInfo{
-						Name:        peer.hostname,
-						TailscaleIP: peer.ip,
-						Tool:        t,
-					},
-					ok: true,
+					info: peer,
+					ok:   true,
 				}
 				return
 			}
@@ -60,7 +56,7 @@ func DiscoverVersion(ctx context.Context, srv *Server, toolName, minVersion stri
 		}()
 	}
 
-	var found []NodeInfo
+	var found []Peer
 	for range peers {
 		r := <-results
 		if r.ok {
@@ -72,14 +68,7 @@ func DiscoverVersion(ctx context.Context, srv *Server, toolName, minVersion stri
 
 // ─── peer discovery ───────────────────────────────────────────────────────────
 
-type peerInfo struct {
-	hostname string
-	ip       string
-}
-
-// onlinePeers returns all online tailnet peers running tailkitd
-// (hostname starts with "tailkitd-"), querying via the system Tailscale daemon.
-func onlinePeers(ctx context.Context, srv *Server) ([]peerInfo, error) {
+func AllPeers(ctx context.Context, srv *Server) ([]Peer, error) {
 	lc := srv.localClient()
 	if lc == nil {
 		return nil, fmt.Errorf("tailkit: local client unavailable")
@@ -90,21 +79,88 @@ func onlinePeers(ctx context.Context, srv *Server) ([]peerInfo, error) {
 		return nil, err
 	}
 
-	var peers []peerInfo
+	var peers []Peer
 	for _, peer := range status.Peer {
-		if !peer.Online {
+
+		if strings.HasPrefix(peer.HostName, "tailkitd-") {
 			continue
 		}
-		name := peer.HostName
-		if !strings.HasPrefix(name, "tailkitd-") {
-			continue
+
+		tailkit, err := GetPeerTailkit(ctx, srv)
+		if err != nil {
+			return nil, err
 		}
-		nodeHostname := strings.TrimPrefix(name, "tailkitd-")
-		ip := ""
-		if len(peer.TailscaleIPs) > 0 {
-			ip = peer.TailscaleIPs[0].String()
-		}
-		peers = append(peers, peerInfo{hostname: nodeHostname, ip: ip})
+		peers = append(peers, Peer{
+			Status:  *peer,
+			Tailkit: tailkit,
+		})
 	}
 	return peers, nil
+}
+
+// OnlinePeers returns all online tailnet peers running tailkitd
+// (hostname starts with "tailkitd-"), querying via the system Tailscale daemon.
+func OnlinePeers(ctx context.Context, srv *Server) ([]Peer, error) {
+	lc := srv.localClient()
+	if lc == nil {
+		return nil, fmt.Errorf("tailkit: local client unavailable")
+	}
+
+	status, err := lc.Status(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var peers []Peer
+	for _, peer := range status.Peer {
+		if !peer.Online || strings.HasPrefix(peer.HostName, "tailkitd-") {
+			continue
+		}
+		tailkit, err := GetPeerTailkit(ctx, srv)
+		if err != nil {
+			return nil, err
+		}
+		peers = append(peers, Peer{
+			Status:  *peer,
+			Tailkit: tailkit,
+		})
+	}
+	return peers, nil
+}
+
+func TailkitPeers(ctx context.Context, srv *Server) ([]TailkitPeer, error) {
+
+	lc := srv.localClient()
+	if lc == nil {
+		return nil, fmt.Errorf("tailkit: local client unavailable")
+	}
+
+	status, err := lc.Status(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var tailkitPeers []TailkitPeer
+	for _, peer := range status.Peer {
+
+		if !strings.HasPrefix(peer.HostName, "tailkitd-") {
+			continue
+		}
+
+		tailkitPeer := TailkitPeer{
+			Status: *peer,
+			Tools:  []Tool{},
+		}
+		tailkitPeers = append(tailkitPeers, tailkitPeer)
+	}
+	return tailkitPeers, nil
+}
+
+func GetPeerTailkit(ctx context.Context, srv *Server) (*TailkitPeer, error) {
+
+	return nil, nil
+}
+
+func GetPeerTools(ctx context.Context, srv *Server, tailscaleIP string) ([]Tool, error) {
+	return []Tool{}, nil
 }

@@ -11,6 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coreos/go-systemd/v22/dbus"
+
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/swarm"
 	"tailscale.com/tsnet"
 )
 
@@ -450,13 +455,13 @@ func (dc *DockerClient) Available(ctx context.Context) (bool, error) {
 	return resp["available"], nil
 }
 
-func (dc *DockerClient) Containers(ctx context.Context) ([]map[string]any, error) {
-	var out []map[string]any
+func (dc *DockerClient) Containers(ctx context.Context) ([]container.Summary, error) {
+	var out []container.Summary
 	return out, dc.node.do(ctx, http.MethodGet, dockerBase+"/containers", nil, &out)
 }
 
-func (dc *DockerClient) Container(ctx context.Context, id string) (map[string]any, error) {
-	var out map[string]any
+func (dc *DockerClient) Container(ctx context.Context, id string) (container.InspectResponse, error) {
+	var out container.InspectResponse
 	return out, dc.node.do(ctx, http.MethodGet,
 		dockerBase+"/containers/"+url.PathEscape(id), nil, &out)
 }
@@ -468,12 +473,6 @@ func (dc *DockerClient) Logs(ctx context.Context, id string, tail int) (string, 
 	path := fmt.Sprintf("%s/containers/%s/logs?tail=%d",
 		dockerBase, url.PathEscape(id), tail)
 	return resp.Logs, dc.node.do(ctx, http.MethodGet, path, nil, &resp)
-}
-
-func (dc *DockerClient) Stats(ctx context.Context, id string) (map[string]any, error) {
-	var out map[string]any
-	return out, dc.node.do(ctx, http.MethodGet,
-		dockerBase+"/containers/"+url.PathEscape(id)+"/stats", nil, &out)
 }
 
 func (dc *DockerClient) Start(ctx context.Context, id string) (Job, error) {
@@ -500,8 +499,8 @@ func (dc *DockerClient) Remove(ctx context.Context, id string) (Job, error) {
 		dockerBase+"/containers/"+url.PathEscape(id), nil, &job)
 }
 
-func (dc *DockerClient) Images(ctx context.Context) ([]map[string]any, error) {
-	var out []map[string]any
+func (dc *DockerClient) Images(ctx context.Context) ([]image.Summary, error) {
+	var out []image.Summary
 	return out, dc.node.do(ctx, http.MethodGet, dockerBase+"/images", nil, &out)
 }
 
@@ -516,14 +515,14 @@ type ComposeClient struct{ node *NodeClient }
 
 func (dc *DockerClient) Compose() *ComposeClient { return &ComposeClient{node: dc.node} }
 
-func (cc *ComposeClient) Projects(ctx context.Context) ([]map[string]any, error) {
-	var out []map[string]any
+func (cc *ComposeClient) Projects(ctx context.Context) ([]ComposeService, error) {
+	var out []ComposeService
 	return out, cc.node.do(ctx, http.MethodGet,
 		dockerBase+"/compose/projects", nil, &out)
 }
 
-func (cc *ComposeClient) Project(ctx context.Context, name string) (map[string]any, error) {
-	var out map[string]any
+func (cc *ComposeClient) Project(ctx context.Context, name string) (ComposeService, error) {
+	var out ComposeService
 	return out, cc.node.do(ctx, http.MethodGet,
 		dockerBase+"/compose/"+url.PathEscape(name), nil, &out)
 }
@@ -566,19 +565,14 @@ type SwarmClient struct{ node *NodeClient }
 
 func (dc *DockerClient) Swarm() *SwarmClient { return &SwarmClient{node: dc.node} }
 
-func (sc *SwarmClient) Nodes(ctx context.Context) ([]map[string]any, error) {
-	var out []map[string]any
+func (sc *SwarmClient) Nodes(ctx context.Context) ([]swarm.Node, error) {
+	var out []swarm.Node
 	return out, sc.node.do(ctx, http.MethodGet, dockerBase+"/swarm/nodes", nil, &out)
 }
 
-func (sc *SwarmClient) Services(ctx context.Context) ([]map[string]any, error) {
-	var out []map[string]any
+func (sc *SwarmClient) Services(ctx context.Context) ([]swarm.Service, error) {
+	var out []swarm.Service
 	return out, sc.node.do(ctx, http.MethodGet, dockerBase+"/swarm/services", nil, &out)
-}
-
-func (sc *SwarmClient) Tasks(ctx context.Context) ([]map[string]any, error) {
-	var out []map[string]any
-	return out, sc.node.do(ctx, http.MethodGet, dockerBase+"/swarm/tasks", nil, &out)
 }
 
 // ─── Systemd ──────────────────────────────────────────────────────────────────
@@ -598,8 +592,8 @@ func (sc *SystemdClient) Available(ctx context.Context) (bool, error) {
 	return resp["available"], nil
 }
 
-func (sc *SystemdClient) Units(ctx context.Context) ([]map[string]any, error) {
-	var out []map[string]any
+func (sc *SystemdClient) Units(ctx context.Context) ([]dbus.UnitStatus, error) {
+	var out []dbus.UnitStatus
 	return out, sc.node.do(ctx, http.MethodGet, systemdBase+"/units", nil, &out)
 }
 
