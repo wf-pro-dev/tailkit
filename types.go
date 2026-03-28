@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"tailscale.com/ipn/ipnstate"
-	"tailscale.com/tailcfg"
 )
 
 // ─── Error sentinels ─────────────────────────────────────────────────────────
@@ -68,10 +67,8 @@ type Tool struct {
 
 // specific tool installed.
 type Peer struct {
-	Status   ipnstate.PeerStatus   `json:"status"`
-	Location tailcfg.MachineStatus `json:"location"`
-
-	Tailkit *TailkitPeer `json:"tailkit"`
+	Status  ipnstate.PeerStatus `json:"status"`
+	Tailkit *TailkitPeer        `json:"tailkit"`
 }
 
 type TailkitPeer struct {

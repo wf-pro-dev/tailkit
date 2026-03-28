@@ -29,19 +29,19 @@ import (
 // Node construction is free — no network calls are made until a method is
 // called on the returned client or one of its sub-clients.
 func Node(srv *Server, hostname string) *NodeClient {
-	return &NodeClient{srv: srv, hostname: hostname}
+	ctx := context.Background()
+	tailkitd, err := GetTailkitPeer(ctx, srv, hostname)
+	if err != nil {
+		return nil
+	}
+	return &NodeClient{srv: srv, tailkitd: tailkitd}
 }
 
 // NodeClient is the entry point for all operations on a single tailkitd node.
 // Obtain one via tailkit.Node(srv, "hostname").
 type NodeClient struct {
 	srv      *Server
-	hostname string // node's Tailscale hostname (without "tailkitd-" prefix)
-}
-
-// tailkitdHost returns the tsnet hostname of this node's tailkitd instance.
-func (n *NodeClient) tailkitdHost() string {
-	return "tailkitd-" + n.hostname
+	tailkitd *TailkitPeer
 }
 
 // httpClient returns an *http.Client that routes connections through the
@@ -58,7 +58,7 @@ func (n *NodeClient) httpClient() *http.Client {
 
 // baseURL returns the base URL for the target node's tailkitd.
 func (n *NodeClient) baseURL() string {
-	return "http://" + n.tailkitdHost()
+	return "http://" + n.tailkitd.Status.HostName
 }
 
 // do executes an HTTP request against the node and decodes the JSON response
@@ -286,7 +286,7 @@ func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, err
 		Filename:     req.Filename,
 		ToolName:     req.ToolName,
 		LocalPath:    req.LocalPath,
-		DestMachine:  n.hostname,
+		DestMachine:  n.tailkitd.Status.HostName,
 		Success:      false,
 		WrittenTo:    req.DestPath,
 		BytesWritten: 0,
@@ -334,7 +334,7 @@ func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, err
 	}
 
 	result.LocalPath = req.LocalPath
-	result.DestMachine = n.hostname
+	result.DestMachine = n.tailkitd.Status.HostName
 	result.Success = true
 
 	return result, nil
