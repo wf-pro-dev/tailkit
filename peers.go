@@ -4,9 +4,16 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/types/key"
+)
+
+var (
+	peers       map[key.NodePublic]*ipnstate.PeerStatus
+	lastUpdated time.Time
+	TTL         = 15 * time.Minute
 )
 
 // Discover finds all online tailnet peers that have the named tool installed.
@@ -71,6 +78,25 @@ func DiscoverVersion(ctx context.Context, srv *Server, toolName, minVersion stri
 
 // ─── peer discovery ───────────────────────────────────────────────────────────
 
+func GetPeers(ctx context.Context, srv *Server) (map[key.NodePublic]*ipnstate.PeerStatus, error) {
+
+	if time.Since(lastUpdated) < TTL && len(peers) > 0 {
+		return peers, nil
+	}
+
+	lc := srv.localClient()
+	if lc == nil {
+		return nil, fmt.Errorf("tailkit: local client unavailable")
+	}
+
+	status, err := lc.Status(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return status.Peer, nil
+}
+
 func AllPeers(ctx context.Context, srv *Server) ([]Peer, error) {
 
 	peers, err := GetPeers(ctx, srv)
@@ -100,20 +126,6 @@ func AllPeers(ctx context.Context, srv *Server) ([]Peer, error) {
 		})
 	}
 	return allPeers, nil
-}
-
-func GetPeers(ctx context.Context, srv *Server) (map[key.NodePublic]*ipnstate.PeerStatus, error) {
-	lc := srv.localClient()
-	if lc == nil {
-		return nil, fmt.Errorf("tailkit: local client unavailable")
-	}
-
-	status, err := lc.Status(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return status.Peer, nil
 }
 
 // OnlinePeers returns all online tailnet peers running tailkitd
@@ -166,6 +178,10 @@ func TailkitPeers(ctx context.Context, srv *Server) ([]TailkitPeer, error) {
 	return tailkitPeers, nil
 }
 
+func GetTailkitHostname(hostname string) string {
+	return "tailkitd-" + hostname
+}
+
 func GetTailkitPeer(ctx context.Context, srv *Server, hostname string) (*TailkitPeer, error) {
 
 	peers, err := GetPeers(ctx, srv)
@@ -174,7 +190,7 @@ func GetTailkitPeer(ctx context.Context, srv *Server, hostname string) (*Tailkit
 	}
 
 	for _, p := range peers {
-		if p.Tags.ContainsFunc(func(t string) bool { return t == hostname }) {
+		if p.HostName == "tailkitd-"+hostname {
 			return &TailkitPeer{
 				Status: *p,
 				Tools:  []Tool{},

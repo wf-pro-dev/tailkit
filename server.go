@@ -19,7 +19,6 @@ type ServerConfig struct {
 	AuthKey   string
 	StateDir  string
 	Ephemeral bool
-	Tags      []string
 }
 
 // Server is a tailkit-managed tsnet server.
@@ -48,11 +47,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 
 	ts := &tsnet.Server{
-		Hostname:      cfg.Hostname,
-		AuthKey:       authKey,
-		Dir:           stateDir,
-		Ephemeral:     cfg.Ephemeral,
-		AdvertiseTags: cfg.Tags,
+		Hostname:  cfg.Hostname,
+		AuthKey:   authKey,
+		Dir:       stateDir,
+		Ephemeral: cfg.Ephemeral,
 	}
 
 	if err := ts.Start(); err != nil {
