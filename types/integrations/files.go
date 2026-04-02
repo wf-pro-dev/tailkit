@@ -1,5 +1,10 @@
 package types
 
+import (
+	"path/filepath"
+	"strings"
+)
+
 // FilesConfig is the parsed and validated representation of files.toml.
 type FilesConfig struct {
 	Enabled bool
@@ -42,4 +47,35 @@ type ResolvedIdentity struct {
 	UID int
 	GID int
 	Set bool // true when a write_as user was successfully resolved
+}
+
+// matchReadRule finds the longest-prefix read rule covering path.
+func (cfg *FilesConfig) MatchPathRule(path string) (PathRule, string, bool) {
+	// For a file path, check its parent directory against the read rules.
+	checkPath := path
+	if !strings.HasSuffix(checkPath, "/") {
+		checkPath = filepath.Dir(checkPath) + "/"
+	}
+	best := ""
+	var bestRule PathRule
+	for _, rule := range cfg.Paths {
+		dir := rule.Dir
+		if strings.HasPrefix(checkPath, dir) && len(dir) > len(best) {
+			best = dir
+			bestRule = rule
+		}
+	}
+	if best == "" {
+		return PathRule{}, "", false
+	}
+	return bestRule, best, true
+}
+
+func (r PathRule) Permits(op string) bool {
+	for _, a := range r.Allow {
+		if a == op {
+			return true
+		}
+	}
+	return false
 }

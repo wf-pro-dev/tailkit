@@ -25,3 +25,14 @@ type VarScope struct {
 	// At least one value is required.
 	Allow []string `toml:"allow"`
 }
+
+// Methods
+
+func (s VarScope) Permits(op string) bool {
+	for _, a := range s.Allow {
+		if a == op {
+			return true
+		}
+	}
+	return false
+}

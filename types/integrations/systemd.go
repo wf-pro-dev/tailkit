@@ -40,3 +40,16 @@ type UnitConfig struct {
 	// An unknown value is a fatal config error.
 	Allow []string `toml:"allow"`
 }
+
+// Permits returns true if op is enabled and present in the allow list.
+func (u UnitConfig) Permits(op string) bool {
+	if !u.Enabled {
+		return false
+	}
+	for _, a := range u.Allow {
+		if a == op {
+			return true
+		}
+	}
+	return false
+}
