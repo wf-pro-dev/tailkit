@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/swarm"
+	"github.com/wf-pro-dev/tailkit/types"
 	"tailscale.com/tsnet"
 )
 
@@ -41,7 +42,7 @@ func Node(srv *Server, hostname string) *NodeClient {
 // Obtain one via tailkit.Node(srv, "hostname").
 type NodeClient struct {
 	srv      *Server
-	tailkitd *TailkitPeer
+	tailkitd *types.TailkitPeer
 }
 
 // httpClient returns an *http.Client that routes connections through the
@@ -136,27 +137,27 @@ func mapAPIError(status int, path, msg string) error {
 		// Determine which integration is unavailable from the path.
 		switch {
 		case strings.Contains(path, "/docker"):
-			return ErrDockerUnavailable
+			return types.ErrDockerUnavailable
 		case strings.Contains(path, "/systemd"):
-			return ErrSystemdUnavailable
+			return types.ErrSystemdUnavailable
 		case strings.Contains(path, "/metrics"):
-			return ErrMetricsUnavailable
+			return types.ErrMetricsUnavailable
 		case strings.Contains(path, "/files") || strings.Contains(path, "/receive"):
-			return ErrReceiveNotConfigured
+			return types.ErrReceiveNotConfigured
 		case strings.Contains(path, "/vars"):
-			return ErrVarScopeNotFound
+			return types.ErrVarScopeNotFound
 		}
 		return fmt.Errorf("tailkit: service unavailable: %s", msg)
 	case http.StatusNotFound:
 		if strings.Contains(path, "/tools") {
-			return ErrToolNotFound
+			return types.ErrToolNotFound
 		}
 		if strings.Contains(path, "/exec/") {
-			return ErrCommandNotFound
+			return types.ErrCommandNotFound
 		}
 		return fmt.Errorf("tailkit: not found: %s", msg)
 	case http.StatusForbidden:
-		return ErrPermissionDenied
+		return types.ErrPermissionDenied
 	default:
 		return fmt.Errorf("tailkit: HTTP %d from %s: %s", status, path, msg)
 	}
@@ -165,8 +166,8 @@ func mapAPIError(status int, path, msg string) error {
 // ─── Tools ────────────────────────────────────────────────────────────────────
 
 // Tools returns all tools registered on the node.
-func (n *NodeClient) Tools(ctx context.Context) ([]Tool, error) {
-	var tools []Tool
+func (n *NodeClient) Tools(ctx context.Context) ([]types.Tool, error) {
+	var tools []types.Tool
 	if err := n.do(ctx, http.MethodGet, "/tools", nil, &tools); err != nil {
 		return nil, err
 	}
@@ -175,7 +176,7 @@ func (n *NodeClient) Tools(ctx context.Context) ([]Tool, error) {
 
 // HasTool reports whether the node has a specific tool installed at or above
 // the given minimum version. An empty minVersion matches any version.
-func (n *NodeClient) HasTool(ctx context.Context, name, minVersion string) (bool, error) {
+func (n *NodeClient) HasTool(ctx context.Context, name string, minVersion string) (bool, error) {
 	tools, err := n.Tools(ctx)
 	if err != nil {
 		return false, err
@@ -197,31 +198,31 @@ func (n *NodeClient) HasTool(ctx context.Context, name, minVersion string) (bool
 // ─── Exec ─────────────────────────────────────────────────────────────────────
 
 // ExecJob polls for the result of a previously submitted job.
-func (n *NodeClient) ExecJob(ctx context.Context, jobID string) (JobResult, error) {
-	var result JobResult
+func (n *NodeClient) ExecJob(ctx context.Context, jobID string) (types.JobResult, error) {
+	var result types.JobResult
 	if err := n.do(ctx, http.MethodGet, "/exec/jobs/"+url.PathEscape(jobID), nil, &result); err != nil {
-		return JobResult{}, err
+		return types.JobResult{}, err
 	}
 	return result, nil
 }
 
 // ExecWait fires a command and blocks until it completes or ctx is cancelled.
 // Cancelling ctx stops polling but does not cancel the running job on the node.
-func (n *NodeClient) ExecWait(ctx context.Context, jobID string) (JobResult, error) {
+func (n *NodeClient) ExecWait(ctx context.Context, jobID string) (types.JobResult, error) {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return JobResult{}, ctx.Err()
+			return types.JobResult{}, ctx.Err()
 		case <-ticker.C:
 			result, err := n.ExecJob(ctx, jobID)
 			if err != nil {
-				return JobResult{}, err
+				return types.JobResult{}, err
 			}
 			switch result.Status {
-			case JobStatusCompleted, JobStatusFailed, JobStatusCancelled:
+			case types.JobStatusCompleted, types.JobStatusFailed, types.JobStatusCancelled:
 				return result, nil
 			}
 			// JobStatusAccepted or JobStatusRunning — keep polling.
@@ -243,8 +244,8 @@ func (n *NodeClient) Files() *FilesClient {
 }
 
 // List returns the directory listing for path on the node.
-func (fc *FilesClient) List(ctx context.Context, dirPath string) ([]DirEntry, error) {
-	var entries []DirEntry
+func (fc *FilesClient) List(ctx context.Context, dirPath string) ([]types.DirEntry, error) {
+	var entries []types.DirEntry
 	if err := fc.node.do(ctx, http.MethodGet,
 		"/files?dir="+url.QueryEscape(dirPath), nil, &entries); err != nil {
 		return nil, err
@@ -280,9 +281,9 @@ func (fc *FilesClient) Download(ctx context.Context, remotePath, localPath strin
 
 // Send pushes a local file to the node. Returns a SendResult; if a post_recv
 // hook was triggered, SendResult.JobID is set and can be polled with ExecJob.
-func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, error) {
+func (n *NodeClient) Send(ctx context.Context, req types.SendRequest) (types.SendResult, error) {
 
-	failResult := SendResult{
+	failResult := types.SendResult{
 		Filename:     req.Filename,
 		ToolName:     req.ToolName,
 		LocalPath:    req.LocalPath,
@@ -327,7 +328,7 @@ func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, err
 		return failResult, mapAPIError(resp.StatusCode, "/files", errBody.Error)
 	}
 
-	var result SendResult
+	var result types.SendResult
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		failResult.Error = err.Error()
 		return failResult, fmt.Errorf("tailkit: decode send result: %w", err)
@@ -342,13 +343,13 @@ func (n *NodeClient) Send(ctx context.Context, req SendRequest) (SendResult, err
 
 // SendDir pushes all files in a local directory to the node recursively.
 // Returns one SendResult per file; errors are collected, not propagated.
-func (n *NodeClient) SendDir(ctx context.Context, req SendDirRequest) ([]SendResult, error) {
+func (n *NodeClient) SendDir(ctx context.Context, req types.SendDirRequest) ([]types.SendResult, error) {
 	files, err := walkDir(req.LocalDir)
 	if err != nil {
 		return nil, fmt.Errorf("tailkit: walk %s: %w", req.LocalDir, err)
 	}
 
-	var results []SendResult
+	var results []types.SendResult
 	for _, localPath := range files {
 		rel := strings.TrimPrefix(localPath, req.LocalDir)
 		rel = strings.TrimPrefix(rel, "/")
@@ -358,13 +359,13 @@ func (n *NodeClient) SendDir(ctx context.Context, req SendDirRequest) ([]SendRes
 		}
 		destPath += rel
 
-		result, err := n.Send(ctx, SendRequest{
+		result, err := n.Send(ctx, types.SendRequest{
 			LocalPath: localPath,
 			DestPath:  destPath,
 		})
 		if err != nil {
 			// Collect error as a failed result; continue with remaining files.
-			results = append(results, SendResult{WrittenTo: destPath})
+			results = append(results, types.SendResult{WrittenTo: destPath})
 			continue
 		}
 		results = append(results, result)
@@ -475,26 +476,26 @@ func (dc *DockerClient) Logs(ctx context.Context, id string, tail int) (string, 
 	return resp.Logs, dc.node.do(ctx, http.MethodGet, path, nil, &resp)
 }
 
-func (dc *DockerClient) Start(ctx context.Context, id string) (Job, error) {
-	var job Job
+func (dc *DockerClient) Start(ctx context.Context, id string) (types.Job, error) {
+	var job types.Job
 	return job, dc.node.do(ctx, http.MethodPost,
 		dockerBase+"/containers/"+url.PathEscape(id)+"/start", nil, &job)
 }
 
-func (dc *DockerClient) Stop(ctx context.Context, id string) (Job, error) {
-	var job Job
+func (dc *DockerClient) Stop(ctx context.Context, id string) (types.Job, error) {
+	var job types.Job
 	return job, dc.node.do(ctx, http.MethodPost,
 		dockerBase+"/containers/"+url.PathEscape(id)+"/stop", nil, &job)
 }
 
-func (dc *DockerClient) Restart(ctx context.Context, id string) (Job, error) {
-	var job Job
+func (dc *DockerClient) Restart(ctx context.Context, id string) (types.Job, error) {
+	var job types.Job
 	return job, dc.node.do(ctx, http.MethodPost,
 		dockerBase+"/containers/"+url.PathEscape(id)+"/restart", nil, &job)
 }
 
-func (dc *DockerClient) Remove(ctx context.Context, id string) (Job, error) {
-	var job Job
+func (dc *DockerClient) Remove(ctx context.Context, id string) (types.Job, error) {
+	var job types.Job
 	return job, dc.node.do(ctx, http.MethodDelete,
 		dockerBase+"/containers/"+url.PathEscape(id), nil, &job)
 }
@@ -504,8 +505,8 @@ func (dc *DockerClient) Images(ctx context.Context) ([]image.Summary, error) {
 	return out, dc.node.do(ctx, http.MethodGet, dockerBase+"/images", nil, &out)
 }
 
-func (dc *DockerClient) Pull(ctx context.Context, ref string) (Job, error) {
-	var job Job
+func (dc *DockerClient) Pull(ctx context.Context, ref string) (types.Job, error) {
+	var job types.Job
 	return job, dc.node.do(ctx, http.MethodPost,
 		dockerBase+"/images/pull?ref="+url.QueryEscape(ref), nil, &job)
 }
@@ -515,20 +516,20 @@ type ComposeClient struct{ node *NodeClient }
 
 func (dc *DockerClient) Compose() *ComposeClient { return &ComposeClient{node: dc.node} }
 
-func (cc *ComposeClient) Projects(ctx context.Context) ([]ComposeService, error) {
-	var out []ComposeService
+func (cc *ComposeClient) Projects(ctx context.Context) ([]types.ComposeService, error) {
+	var out []types.ComposeService
 	return out, cc.node.do(ctx, http.MethodGet,
 		dockerBase+"/compose/projects", nil, &out)
 }
 
-func (cc *ComposeClient) Project(ctx context.Context, name string) (ComposeService, error) {
-	var out ComposeService
+func (cc *ComposeClient) Project(ctx context.Context, name string) (types.ComposeService, error) {
+	var out types.ComposeService
 	return out, cc.node.do(ctx, http.MethodGet,
 		dockerBase+"/compose/"+url.PathEscape(name), nil, &out)
 }
 
-func (cc *ComposeClient) Up(ctx context.Context, name, composefile string) (Job, error) {
-	var job Job
+func (cc *ComposeClient) Up(ctx context.Context, name, composefile string) (types.Job, error) {
+	var job types.Job
 	path := dockerBase + "/compose/" + url.PathEscape(name) + "/up"
 	if composefile != "" {
 		path += "?file=" + url.QueryEscape(composefile)
@@ -536,26 +537,26 @@ func (cc *ComposeClient) Up(ctx context.Context, name, composefile string) (Job,
 	return job, cc.node.do(ctx, http.MethodPost, path, nil, &job)
 }
 
-func (cc *ComposeClient) Down(ctx context.Context, name string) (Job, error) {
-	var job Job
+func (cc *ComposeClient) Down(ctx context.Context, name string) (types.Job, error) {
+	var job types.Job
 	return job, cc.node.do(ctx, http.MethodPost,
 		dockerBase+"/compose/"+url.PathEscape(name)+"/down", nil, &job)
 }
 
-func (cc *ComposeClient) Pull(ctx context.Context, name string) (Job, error) {
-	var job Job
+func (cc *ComposeClient) Pull(ctx context.Context, name string) (types.Job, error) {
+	var job types.Job
 	return job, cc.node.do(ctx, http.MethodPost,
 		dockerBase+"/compose/"+url.PathEscape(name)+"/pull", nil, &job)
 }
 
-func (cc *ComposeClient) Restart(ctx context.Context, name string) (Job, error) {
-	var job Job
+func (cc *ComposeClient) Restart(ctx context.Context, name string) (types.Job, error) {
+	var job types.Job
 	return job, cc.node.do(ctx, http.MethodPost,
 		dockerBase+"/compose/"+url.PathEscape(name)+"/restart", nil, &job)
 }
 
-func (cc *ComposeClient) Build(ctx context.Context, name string) (Job, error) {
-	var job Job
+func (cc *ComposeClient) Build(ctx context.Context, name string) (types.Job, error) {
+	var job types.Job
 	return job, cc.node.do(ctx, http.MethodPost,
 		dockerBase+"/compose/"+url.PathEscape(name)+"/build", nil, &job)
 }
@@ -612,38 +613,38 @@ func (sc *SystemdClient) UnitFile(ctx context.Context, unit string) (string, err
 	return resp.Content, err
 }
 
-func (sc *SystemdClient) Start(ctx context.Context, unit string) (Job, error) {
-	var job Job
+func (sc *SystemdClient) Start(ctx context.Context, unit string) (types.Job, error) {
+	var job types.Job
 	return job, sc.node.do(ctx, http.MethodPost,
 		systemdBase+"/units/"+url.PathEscape(unit)+"/start", nil, &job)
 }
 
-func (sc *SystemdClient) Stop(ctx context.Context, unit string) (Job, error) {
-	var job Job
+func (sc *SystemdClient) Stop(ctx context.Context, unit string) (types.Job, error) {
+	var job types.Job
 	return job, sc.node.do(ctx, http.MethodPost,
 		systemdBase+"/units/"+url.PathEscape(unit)+"/stop", nil, &job)
 }
 
-func (sc *SystemdClient) Restart(ctx context.Context, unit string) (Job, error) {
-	var job Job
+func (sc *SystemdClient) Restart(ctx context.Context, unit string) (types.Job, error) {
+	var job types.Job
 	return job, sc.node.do(ctx, http.MethodPost,
 		systemdBase+"/units/"+url.PathEscape(unit)+"/restart", nil, &job)
 }
 
-func (sc *SystemdClient) Reload(ctx context.Context, unit string) (Job, error) {
-	var job Job
+func (sc *SystemdClient) Reload(ctx context.Context, unit string) (types.Job, error) {
+	var job types.Job
 	return job, sc.node.do(ctx, http.MethodPost,
 		systemdBase+"/units/"+url.PathEscape(unit)+"/reload", nil, &job)
 }
 
-func (sc *SystemdClient) Enable(ctx context.Context, unit string) (Job, error) {
-	var job Job
+func (sc *SystemdClient) Enable(ctx context.Context, unit string) (types.Job, error) {
+	var job types.Job
 	return job, sc.node.do(ctx, http.MethodPost,
 		systemdBase+"/units/"+url.PathEscape(unit)+"/enable", nil, &job)
 }
 
-func (sc *SystemdClient) Disable(ctx context.Context, unit string) (Job, error) {
-	var job Job
+func (sc *SystemdClient) Disable(ctx context.Context, unit string) (types.Job, error) {
+	var job types.Job
 	return job, sc.node.do(ctx, http.MethodPost,
 		systemdBase+"/units/"+url.PathEscape(unit)+"/disable", nil, &job)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/wf-pro-dev/tailkit/types"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -15,19 +16,19 @@ const fleetConcurrency = 10
 // Obtain via tailkit.AllNodes(srv).
 type FleetClient struct {
 	srv   *Server
-	peers []Peer
+	peers []types.Peer
 }
 
 // Nodes returns a FleetClient that fans out requests to the given peers.
 // fans out requests to them with bounded parallelism (10 concurrent).
-func Nodes(srv *Server, peers []Peer) *FleetClient {
+func Nodes(srv *Server, peers []types.Peer) *FleetClient {
 	return &FleetClient{srv: srv, peers: peers}
 }
 
 // fanOut runs fn on every peer concurrently, bounded to fleetConcurrency.
 // Results and errors are collected per-node — one node's failure never
 // prevents results from other nodes.
-func fanOut[T any](ctx context.Context, peers []Peer, fn func(context.Context, Peer) (T, error)) (map[string]T, map[string]error) {
+func fanOut[T any](ctx context.Context, peers []types.Peer, fn func(context.Context, types.Peer) (T, error)) (map[string]T, map[string]error) {
 	results := make(map[string]T, len(peers))
 	errs := make(map[string]error)
 
@@ -64,21 +65,21 @@ func (f *FleetClient) Metrics() *FleetMetricsClient {
 
 func (fm *FleetMetricsClient) CPU(ctx context.Context) (map[string]map[string]any, map[string]error) {
 	peers := fm.fleet.peers
-	return fanOut(ctx, peers, func(ctx context.Context, p Peer) (map[string]any, error) {
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (map[string]any, error) {
 		return Node(fm.fleet.srv, p.Status.HostName).Metrics().CPU(ctx)
 	})
 }
 
 func (fm *FleetMetricsClient) Memory(ctx context.Context) (map[string]map[string]any, map[string]error) {
 	peers := fm.fleet.peers
-	return fanOut(ctx, peers, func(ctx context.Context, p Peer) (map[string]any, error) {
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (map[string]any, error) {
 		return Node(fm.fleet.srv, p.Status.HostName).Metrics().Memory(ctx)
 	})
 }
 
 func (fm *FleetMetricsClient) All(ctx context.Context) (map[string]map[string]any, map[string]error) {
 	peers := fm.fleet.peers
-	return fanOut(ctx, peers, func(ctx context.Context, p Peer) (map[string]any, error) {
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (map[string]any, error) {
 		return Node(fm.fleet.srv, p.Status.HostName).Metrics().All(ctx)
 	})
 }
@@ -101,7 +102,7 @@ func (f *FleetClient) Vars(project, env string) *FleetVarsClient {
 // does not prevent writes to other nodes.
 func (fv *FleetVarsClient) Set(ctx context.Context, key, value string) map[string]error {
 	peers := fv.fleet.peers
-	_, errs := fanOut(ctx, peers, func(ctx context.Context, p Peer) (struct{}, error) {
+	_, errs := fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (struct{}, error) {
 		err := Node(fv.fleet.srv, p.Status.HostName).Vars(fv.project, fv.env).Set(ctx, key, value)
 		return struct{}{}, err
 	})
@@ -112,7 +113,7 @@ func (fv *FleetVarsClient) Set(ctx context.Context, key, value string) map[strin
 // configured return ErrVarScopeNotFound in the error map.
 func (fv *FleetVarsClient) List(ctx context.Context) (map[string]map[string]string, map[string]error) {
 	peers := fv.fleet.peers
-	return fanOut(ctx, peers, func(ctx context.Context, p Peer) (map[string]string, error) {
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (map[string]string, error) {
 		return Node(fv.fleet.srv, p.Status.HostName).Vars(fv.project, fv.env).List(ctx)
 	})
 }
@@ -123,13 +124,13 @@ func (fv *FleetVarsClient) List(ctx context.Context) (map[string]map[string]stri
 // Each node that has a matching write rule receives the file.
 // Nodes that are offline or have no matching write rule are skipped —
 // their errors are collected and returned, not propagated.
-func Broadcast(ctx context.Context, srv *Server, req SendRequest) ([]SendResult, map[string]error) {
+func Broadcast(ctx context.Context, srv *Server, req types.SendRequest) ([]types.SendResult, map[string]error) {
 	peers, err := OnlinePeers(ctx, srv)
 	if err != nil {
 		return nil, map[string]error{"_discover": err}
 	}
 
-	results := make([]SendResult, 0, len(peers))
+	results := make([]types.SendResult, 0, len(peers))
 	errs := make(map[string]error)
 	var mu sync.Mutex
 
