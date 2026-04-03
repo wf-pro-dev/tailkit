@@ -34,7 +34,7 @@ type PathRule struct {
 	// Requires the daemon to hold CAP_SETUID (granted by AmbientCapabilities
 	// in the systemd unit). If absent, writes succeed as the daemon user.
 	// Resolved to WriteAs at load time via os/user.Lookup.
-	UseAsUser string `toml:"use_as_user"`
+	UseAsUser string `toml:"use_as"`
 
 	// WriteAs is the resolved identity for WriteAsUser.
 	// Zero value (Set=false) means no privilege drop — write as daemon user.
