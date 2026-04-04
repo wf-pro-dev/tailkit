@@ -17,17 +17,6 @@ go get github.com/wf-pro-dev/tailkit
 
 ---
 
-## Sections
-
-| File | Contents |
-|---|---|
-| [server.md](server.md) | `NewServer`, `ServerConfig`, TLS helpers, `AuthMiddleware` |
-| [node.md](node.md) | `Node`, `Tools`, `Files`, `Vars`, `Docker`, `Systemd`, `Metrics` |
-| [fleet.md](fleet.md) | `Nodes`, `Discover`, `Broadcast`, peer discovery primitives |
-| [errors.md](errors.md) | Typed errors and how to check them |
-
----
-
 ## Quick start
 
 ```go
@@ -50,10 +39,15 @@ cpuByNode, errs := tailkit.Nodes(srv, peers).Metrics().CPU(ctx)
 
 ---
 
-## Module path
+## Docs
 
-```
-github.com/wf-pro-dev/tailkit
+| Document | Description |
+|---|---|
+| [server.md](docs/server.md) | `NewServer`, `ServerConfig`, TLS helpers, `AuthMiddleware` |
+| [node.md](docs/node.md) | `Node`, `Tools`, `Files`, `Vars`, `Docker`, `Systemd`, `Metrics` |
+| [fleet.md](docs/fleet.md) | `Nodes`, `Discover`, `Broadcast`, peer discovery primitives |
+| [errors.md](docs/errors.md) | Typed errors and how to check them |
+
 ```
 
 ## License
