@@ -290,7 +290,7 @@ func (fc *FilesClient) Read(ctx context.Context, path string) (string, error) {
 func (fc *FilesClient) Stat(ctx context.Context, path string) (types.FileStat, error) {
 	var stat types.FileStat
 	if err := fc.node.do(ctx, http.MethodGet,
-		"/files?path="+url.QueryEscape(path), nil, &stat); err != nil {
+		"/files?path="+url.QueryEscape(path)+"&stat=true", nil, &stat); err != nil {
 		return types.FileStat{}, err
 	}
 	return stat, nil
