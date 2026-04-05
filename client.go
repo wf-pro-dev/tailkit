@@ -34,7 +34,7 @@ func Node(srv *Server, hostname string) *NodeClient {
 	ctx := context.Background()
 	tailkitd, err := GetTailkitPeer(ctx, srv, hostname)
 	if err != nil {
-		return nil
+		return &NodeClient{srv: srv, tailkitd: nil}
 	}
 	return &NodeClient{srv: srv, tailkitd: tailkitd}
 }
