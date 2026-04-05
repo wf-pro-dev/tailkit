@@ -2,9 +2,12 @@ package tailkit
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
 	"sync"
 
 	"github.com/wf-pro-dev/tailkit/types"
+	integrationsTypes "github.com/wf-pro-dev/tailkit/types/integrations"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -37,7 +40,6 @@ func fanOut[T any](ctx context.Context, peers []types.Peer, fn func(context.Cont
 	g.SetLimit(fleetConcurrency)
 
 	for _, peer := range peers {
-		peer := peer
 		g.Go(func() error {
 			val, err := fn(ctx, peer)
 			mu.Lock()
@@ -54,33 +56,62 @@ func fanOut[T any](ctx context.Context, peers []types.Peer, fn func(context.Cont
 	return results, errs
 }
 
-// ─── Fleet Metrics ────────────────────────────────────────────────────────────
+// --- Fleet Files ───────────────────────────────────────────────────────────────
 
-// FleetMetricsClient fans out metrics requests to all nodes.
-type FleetMetricsClient struct{ fleet *FleetClient }
+// FleetFilesClient fans out files requests to all nodes.
+type FleetFilesClient struct{ fleet *FleetClient }
 
-func (f *FleetClient) Metrics() *FleetMetricsClient {
-	return &FleetMetricsClient{fleet: f}
+func (f *FleetClient) Files() *FleetFilesClient {
+	return &FleetFilesClient{fleet: f}
 }
 
-func (fm *FleetMetricsClient) CPU(ctx context.Context) (map[string]map[string]any, map[string]error) {
-	peers := fm.fleet.peers
-	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (map[string]any, error) {
-		return Node(fm.fleet.srv, p.Status.HostName).Metrics().CPU(ctx)
+func (ff *FleetFilesClient) Config(ctx context.Context) (map[string]integrationsTypes.FilesConfig, map[string]error) {
+	peers := ff.fleet.peers
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (integrationsTypes.FilesConfig, error) {
+		return Node(ff.fleet.srv, p.Status.HostName).Files().Config(ctx)
 	})
 }
 
-func (fm *FleetMetricsClient) Memory(ctx context.Context) (map[string]map[string]any, map[string]error) {
-	peers := fm.fleet.peers
-	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (map[string]any, error) {
-		return Node(fm.fleet.srv, p.Status.HostName).Metrics().Memory(ctx)
+func (ff *FleetFilesClient) List(ctx context.Context, path string) (map[string][]types.DirEntry, map[string]error) {
+	peers := ff.fleet.peers
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) ([]types.DirEntry, error) {
+		return Node(ff.fleet.srv, p.Status.HostName).Files().List(ctx, path)
 	})
 }
 
-func (fm *FleetMetricsClient) All(ctx context.Context) (map[string]map[string]any, map[string]error) {
-	peers := fm.fleet.peers
-	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (map[string]any, error) {
-		return Node(fm.fleet.srv, p.Status.HostName).Metrics().All(ctx)
+func (ff *FleetFilesClient) Read(ctx context.Context, path string) (map[string]string, map[string]error) {
+	peers := ff.fleet.peers
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (string, error) {
+		return Node(ff.fleet.srv, p.Status.HostName).Files().Read(ctx, path)
+	})
+}
+
+func (ff *FleetFilesClient) Stat(ctx context.Context, path string) (map[string]types.FileStat, map[string]error) {
+	peers := ff.fleet.peers
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (types.FileStat, error) {
+		return Node(ff.fleet.srv, p.Status.HostName).Files().Stat(ctx, path)
+	})
+}
+
+func (ff *FleetFilesClient) Download(ctx context.Context, path string, localPath string) (map[string]string, map[string]error) {
+	peers := ff.fleet.peers
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (string, error) {
+		safeLocalPath := fmt.Sprintf("%s/%s-%s", filepath.Dir(localPath), p.Status.HostName, filepath.Base(localPath))
+		return safeLocalPath, Node(ff.fleet.srv, p.Status.HostName).Files().Download(ctx, path, safeLocalPath)
+	})
+}
+
+func (ff *FleetFilesClient) Send(ctx context.Context, req types.SendRequest) (map[string]types.SendResult, map[string]error) {
+	peers := ff.fleet.peers
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (types.SendResult, error) {
+		return Node(ff.fleet.srv, p.Status.HostName).Files().Send(ctx, req)
+	})
+}
+
+func (ff *FleetFilesClient) SendDir(ctx context.Context, req types.SendDirRequest) (map[string][]types.SendResult, map[string]error) {
+	peers := ff.fleet.peers
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) ([]types.SendResult, error) {
+		return Node(ff.fleet.srv, p.Status.HostName).Files().SendDir(ctx, req)
 	})
 }
 
@@ -95,6 +126,13 @@ type FleetVarsClient struct {
 
 func (f *FleetClient) Vars(project, env string) *FleetVarsClient {
 	return &FleetVarsClient{fleet: f, project: project, env: env}
+}
+
+func (fv *FleetVarsClient) Config(ctx context.Context) (map[string]integrationsTypes.VarsConfig, map[string]error) {
+	peers := fv.fleet.peers
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (integrationsTypes.VarsConfig, error) {
+		return Node(fv.fleet.srv, p.Status.HostName).Vars(fv.project, fv.env).Config(ctx)
+	})
 }
 
 // Set writes a var to the given scope on every node that has it configured.
@@ -118,39 +156,39 @@ func (fv *FleetVarsClient) List(ctx context.Context) (map[string]map[string]stri
 	})
 }
 
-// ─── Broadcast ────────────────────────────────────────────────────────────────
+// ─── Fleet Metrics ────────────────────────────────────────────────────────────
 
-// Broadcast pushes a file to all online nodes concurrently.
-// Each node that has a matching write rule receives the file.
-// Nodes that are offline or have no matching write rule are skipped —
-// their errors are collected and returned, not propagated.
-func Broadcast(ctx context.Context, srv *Server, req types.SendRequest) ([]types.SendResult, map[string]error) {
-	peers, err := OnlinePeers(ctx, srv)
-	if err != nil {
-		return nil, map[string]error{"_discover": err}
-	}
+// FleetMetricsClient fans out metrics requests to all nodes.
+type FleetMetricsClient struct{ fleet *FleetClient }
 
-	results := make([]types.SendResult, 0, len(peers))
-	errs := make(map[string]error)
-	var mu sync.Mutex
+func (f *FleetClient) Metrics() *FleetMetricsClient {
+	return &FleetMetricsClient{fleet: f}
+}
 
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(fleetConcurrency)
+func (fm *FleetMetricsClient) Config(ctx context.Context) (map[string]integrationsTypes.MetricsConfig, map[string]error) {
+	peers := fm.fleet.peers
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (integrationsTypes.MetricsConfig, error) {
+		return Node(fm.fleet.srv, p.Status.HostName).Metrics().Config(ctx)
+	})
+}
 
-	for _, peer := range peers {
-		peer := peer
-		g.Go(func() error {
-			result, err := Node(srv, peer.Status.HostName).Send(ctx, req)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				errs[peer.Status.HostName] = err
-			} else {
-				results = append(results, result)
-			}
-			return nil
-		})
-	}
-	_ = g.Wait()
-	return results, errs
+func (fm *FleetMetricsClient) CPU(ctx context.Context) (map[string]map[string]any, map[string]error) {
+	peers := fm.fleet.peers
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (map[string]any, error) {
+		return Node(fm.fleet.srv, p.Status.HostName).Metrics().CPU(ctx)
+	})
+}
+
+func (fm *FleetMetricsClient) Memory(ctx context.Context) (map[string]map[string]any, map[string]error) {
+	peers := fm.fleet.peers
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (map[string]any, error) {
+		return Node(fm.fleet.srv, p.Status.HostName).Metrics().Memory(ctx)
+	})
+}
+
+func (fm *FleetMetricsClient) All(ctx context.Context) (map[string]map[string]any, map[string]error) {
+	peers := fm.fleet.peers
+	return fanOut(ctx, peers, func(ctx context.Context, p types.Peer) (map[string]any, error) {
+		return Node(fm.fleet.srv, p.Status.HostName).Metrics().All(ctx)
+	})
 }

@@ -40,6 +40,10 @@ type PathRule struct {
 	// Zero value (Set=false) means no privilege drop — write as daemon user.
 	// Populated by LoadFilesConfig; never set directly by callers.
 	UseAs ResolvedIdentity `toml:"-"`
+
+	// Share is whether this path is shared via the Files integration's config endpoint.
+	// Defaults to false.
+	Share bool `toml:"share"`
 }
 
 // ResolvedIdentity holds a uid/gid resolved from a username at startup.

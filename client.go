@@ -17,6 +17,7 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/wf-pro-dev/tailkit/types"
+	integrationsTypes "github.com/wf-pro-dev/tailkit/types/integrations"
 	"tailscale.com/tsnet"
 )
 
@@ -230,6 +231,15 @@ func (n *NodeClient) ExecWait(ctx context.Context, jobID string) (types.JobResul
 	}
 }
 
+// ─── Config ────────────────────────────────────────────────────────────────────
+
+func GetConfig(n *NodeClient, ctx context.Context, integration string, config any) error {
+	if err := n.do(ctx, http.MethodGet, fmt.Sprintf("/integrations/%s/config", integration), nil, config); err != nil {
+		return err
+	}
+	return nil
+}
+
 // ─── Files ────────────────────────────────────────────────────────────────────
 
 // FilesClient provides typed access to the /files endpoints on a node.
@@ -241,6 +251,14 @@ type FilesClient struct {
 // Files returns a FilesClient for this node.
 func (n *NodeClient) Files() *FilesClient {
 	return &FilesClient{node: n}
+}
+
+func (fc *FilesClient) Config(ctx context.Context) (integrationsTypes.FilesConfig, error) {
+	var config integrationsTypes.FilesConfig
+	if err := GetConfig(fc.node, ctx, "files", &config); err != nil {
+		return integrationsTypes.FilesConfig{}, err
+	}
+	return config, nil
 }
 
 // List returns the directory listing for path on the node.
@@ -269,6 +287,15 @@ func (fc *FilesClient) Read(ctx context.Context, path string) (string, error) {
 	return resp.Content, nil
 }
 
+func (fc *FilesClient) Stat(ctx context.Context, path string) (types.FileStat, error) {
+	var stat types.FileStat
+	if err := fc.node.do(ctx, http.MethodGet,
+		"/files?path="+url.QueryEscape(path), nil, &stat); err != nil {
+		return types.FileStat{}, err
+	}
+	return stat, nil
+}
+
 // Download fetches a file from the node and writes it to localPath.
 func (fc *FilesClient) Download(ctx context.Context, remotePath, localPath string) error {
 	data, err := fc.node.doRaw(ctx, http.MethodGet,
@@ -281,13 +308,13 @@ func (fc *FilesClient) Download(ctx context.Context, remotePath, localPath strin
 
 // Send pushes a local file to the node. Returns a SendResult; if a post_recv
 // hook was triggered, SendResult.JobID is set and can be polled with ExecJob.
-func (n *NodeClient) Send(ctx context.Context, req types.SendRequest) (types.SendResult, error) {
+func (fc *FilesClient) Send(ctx context.Context, req types.SendRequest) (types.SendResult, error) {
 
 	failResult := types.SendResult{
 		Filename:     req.Filename,
 		ToolName:     req.ToolName,
 		LocalPath:    req.LocalPath,
-		DestMachine:  n.tailkitd.Status.HostName,
+		DestMachine:  fc.node.tailkitd.Status.HostName,
 		Success:      false,
 		WrittenTo:    req.DestPath,
 		BytesWritten: 0,
@@ -300,7 +327,7 @@ func (n *NodeClient) Send(ctx context.Context, req types.SendRequest) (types.Sen
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx,
-		http.MethodPost, n.baseURL()+"/files", bytes.NewReader(data))
+		http.MethodPost, fc.node.baseURL()+"/files", bytes.NewReader(data))
 	if err != nil {
 		failResult.Error = err.Error()
 		return failResult, err
@@ -312,7 +339,7 @@ func (n *NodeClient) Send(ctx context.Context, req types.SendRequest) (types.Sen
 		httpReq.Header.Set("X-Filename", req.Filename)
 	}
 
-	resp, err := n.httpClient().Do(httpReq)
+	resp, err := fc.node.httpClient().Do(httpReq)
 	if err != nil {
 		failResult.Error = err.Error()
 		return failResult, fmt.Errorf("tailkit: send %s: %w", req.LocalPath, err)
@@ -335,7 +362,7 @@ func (n *NodeClient) Send(ctx context.Context, req types.SendRequest) (types.Sen
 	}
 
 	result.LocalPath = req.LocalPath
-	result.DestMachine = n.tailkitd.Status.HostName
+	result.DestMachine = fc.node.tailkitd.Status.HostName
 	result.Success = true
 
 	return result, nil
@@ -343,7 +370,7 @@ func (n *NodeClient) Send(ctx context.Context, req types.SendRequest) (types.Sen
 
 // SendDir pushes all files in a local directory to the node recursively.
 // Returns one SendResult per file; errors are collected, not propagated.
-func (n *NodeClient) SendDir(ctx context.Context, req types.SendDirRequest) ([]types.SendResult, error) {
+func (fc *FilesClient) SendDir(ctx context.Context, req types.SendDirRequest) ([]types.SendResult, error) {
 	files, err := walkDir(req.LocalDir)
 	if err != nil {
 		return nil, fmt.Errorf("tailkit: walk %s: %w", req.LocalDir, err)
@@ -359,7 +386,7 @@ func (n *NodeClient) SendDir(ctx context.Context, req types.SendDirRequest) ([]t
 		}
 		destPath += rel
 
-		result, err := n.Send(ctx, types.SendRequest{
+		result, err := fc.Send(ctx, types.SendRequest{
 			LocalPath: localPath,
 			DestPath:  destPath,
 		})
@@ -385,6 +412,14 @@ type VarsClient struct {
 // Vars returns a VarsClient scoped to project/env.
 func (n *NodeClient) Vars(project, env string) *VarsClient {
 	return &VarsClient{node: n, project: project, env: env}
+}
+
+func (vc *VarsClient) Config(ctx context.Context) (integrationsTypes.VarsConfig, error) {
+	var config integrationsTypes.VarsConfig
+	if err := GetConfig(vc.node, ctx, "vars", &config); err != nil {
+		return integrationsTypes.VarsConfig{}, err
+	}
+	return config, nil
 }
 
 func (vc *VarsClient) scopePath() string {
@@ -454,6 +489,14 @@ func (dc *DockerClient) Available(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	return resp["available"], nil
+}
+
+func (dc *DockerClient) Config(ctx context.Context) (integrationsTypes.DockerConfig, error) {
+	var config integrationsTypes.DockerConfig
+	if err := GetConfig(dc.node, ctx, "docker", &config); err != nil {
+		return integrationsTypes.DockerConfig{}, err
+	}
+	return config, nil
 }
 
 func (dc *DockerClient) Containers(ctx context.Context) ([]container.Summary, error) {
@@ -593,6 +636,14 @@ func (sc *SystemdClient) Available(ctx context.Context) (bool, error) {
 	return resp["available"], nil
 }
 
+func (sc *SystemdClient) Config(ctx context.Context) (integrationsTypes.SystemdConfig, error) {
+	var config integrationsTypes.SystemdConfig
+	if err := GetConfig(sc.node, ctx, "systemd", &config); err != nil {
+		return integrationsTypes.SystemdConfig{}, err
+	}
+	return config, nil
+}
+
 func (sc *SystemdClient) Units(ctx context.Context) ([]dbus.UnitStatus, error) {
 	var out []dbus.UnitStatus
 	return out, sc.node.do(ctx, http.MethodGet, systemdBase+"/units", nil, &out)
@@ -677,6 +728,14 @@ func (mc *MetricsClient) Available(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	return resp["available"], nil
+}
+
+func (mc *MetricsClient) Config(ctx context.Context) (integrationsTypes.MetricsConfig, error) {
+	var config integrationsTypes.MetricsConfig
+	if err := GetConfig(mc.node, ctx, "metrics", &config); err != nil {
+		return integrationsTypes.MetricsConfig{}, err
+	}
+	return config, nil
 }
 
 func (mc *MetricsClient) Host(ctx context.Context) (map[string]any, error) {

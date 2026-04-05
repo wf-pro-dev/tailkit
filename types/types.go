@@ -69,6 +69,11 @@ type JobResult struct {
 
 // ─── File transfer types ──────────────────────────────────────────────────────
 
+type FileStat struct {
+	DirEntry
+	SHA256 string `json:"sha256"`
+}
+
 // SendRequest describes a single file to push to a remote node.
 type SendRequest struct {
 	// ToolName is the name of the tool that sent the file.
