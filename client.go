@@ -234,7 +234,7 @@ func (n *NodeClient) ExecWait(ctx context.Context, jobID string) (types.JobResul
 // ─── Config ────────────────────────────────────────────────────────────────────
 
 func GetConfig(n *NodeClient, ctx context.Context, integration string, config any) error {
-	if err := n.do(ctx, http.MethodGet, fmt.Sprintf("/integrations/%s/config", integration), nil, config); err != nil {
+	if err := n.do(ctx, http.MethodGet, fmt.Sprintf("/%s/config", integration), nil, config); err != nil {
 		return err
 	}
 	return nil
@@ -493,7 +493,7 @@ func (dc *DockerClient) Available(ctx context.Context) (bool, error) {
 
 func (dc *DockerClient) Config(ctx context.Context) (integrationsTypes.DockerConfig, error) {
 	var config integrationsTypes.DockerConfig
-	if err := GetConfig(dc.node, ctx, "docker", &config); err != nil {
+	if err := GetConfig(dc.node, ctx, "integrations/docker", &config); err != nil {
 		return integrationsTypes.DockerConfig{}, err
 	}
 	return config, nil
@@ -638,7 +638,7 @@ func (sc *SystemdClient) Available(ctx context.Context) (bool, error) {
 
 func (sc *SystemdClient) Config(ctx context.Context) (integrationsTypes.SystemdConfig, error) {
 	var config integrationsTypes.SystemdConfig
-	if err := GetConfig(sc.node, ctx, "systemd", &config); err != nil {
+	if err := GetConfig(sc.node, ctx, "integrations/systemd", &config); err != nil {
 		return integrationsTypes.SystemdConfig{}, err
 	}
 	return config, nil
@@ -732,7 +732,7 @@ func (mc *MetricsClient) Available(ctx context.Context) (bool, error) {
 
 func (mc *MetricsClient) Config(ctx context.Context) (integrationsTypes.MetricsConfig, error) {
 	var config integrationsTypes.MetricsConfig
-	if err := GetConfig(mc.node, ctx, "metrics", &config); err != nil {
+	if err := GetConfig(mc.node, ctx, "integrations/metrics", &config); err != nil {
 		return integrationsTypes.MetricsConfig{}, err
 	}
 	return config, nil
