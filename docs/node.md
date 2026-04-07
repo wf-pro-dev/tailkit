@@ -23,8 +23,17 @@ ok, err    := tailkit.Node(srv, "vps-1").HasTool(ctx, "devbox", "1.2.0")
 ## Files
 
 ```go
+// fetch the node's files integration config (only paths with share=true are returned)
+config, err := tailkit.Node(srv, "vps-1").Files().Config(ctx)
+
 // read file content as string
 content, err := tailkit.Node(srv, "vps-1").Files().Read(ctx, "/opt/myapp/compose.yml")
+
+// stat a file — returns metadata including SHA-256 hash and size
+stat, err := tailkit.Node(srv, "vps-1").Files().Stat(ctx, "/etc/nginx/nginx.conf")
+// stat.SHA256  — hex-encoded SHA-256 of the file
+// stat.Size    — file size in bytes
+// stat.ModTime — last modified time
 
 // download to a local path
 err = tailkit.Node(srv, "vps-1").Files().Download(ctx,
@@ -54,6 +63,17 @@ if result.JobID != "" {
 ```
 
 `SendDir` collects errors per file — one failed file does not abort remaining transfers.
+
+### Fast hash check with Stat
+
+`Files().Stat(ctx, path)` retrieves file metadata — including a SHA-256 hash and byte size — without returning the full file content. Use it for drift detection and integrity checks when transferring the content itself would be wasteful.
+
+```go
+stat, err := tailkit.Node(srv, "vps-1").Files().Stat(ctx, "/etc/nginx/nginx.conf")
+if stat.SHA256 != vaultSHA256 {
+    // file has drifted
+}
+```
 
 ---
 

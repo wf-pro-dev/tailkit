@@ -31,6 +31,9 @@ peerMap, err := tailkit.GetPeers(ctx, srv)
 peers, err := tailkit.OnlinePeers(ctx, srv)
 fleet := tailkit.Nodes(srv, peers)
 
+// files config across all nodes (only share=true paths returned per node)
+configByNode, errs := fleet.Files().Config(ctx)
+
 // metrics across all nodes
 cpuByNode, errs := fleet.Metrics().CPU(ctx)
 memByNode, errs := fleet.Metrics().Memory(ctx)
