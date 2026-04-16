@@ -12,47 +12,38 @@ import (
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/shirou/gopsutil/v4/cpu"
-	"github.com/shirou/gopsutil/v4/mem"
 	gopsnet "github.com/shirou/gopsutil/v4/net"
 	"github.com/wf-pro-dev/tailkit/types"
 )
 
 const (
-	EventJobStdout     = "job.stdout"
-	EventJobStderr     = "job.stderr"
-	EventJobStatus     = "job.status"
-	EventJobCompleted  = "job.completed"
-	EventJobFailed     = "job.failed"
-	EventLogLine       = "log.line"
-	EventStatsSnapshot = "stats.snapshot"
+	EventError         = types.EventError
+	EventJobStdout     = types.EventJobStdout
+	EventJobStderr     = types.EventJobStderr
+	EventJobStatus     = types.EventJobStatus
+	EventJobCompleted  = types.EventJobCompleted
+	EventJobFailed     = types.EventJobFailed
+	EventLogLine       = types.EventLogLine
+	EventStatsSnapshot = types.EventStatsSnapshot
+	EventJournalEntry  = types.EventJournalEntry
+	EventCPU           = types.EventCPU
+	EventMemory        = types.EventMemory
+	EventNetwork       = types.EventNetwork
+	EventProcesses     = types.EventProcesses
+	EventAll           = types.EventAll
+	EventPortsSnapshot = types.EventPortsSnapshot
+	EventPortBound     = types.EventPortBound
+	EventPortReleased  = types.EventPortReleased
 )
 
-const (
-	EventJournalEntry = "journal.entry"
-	EventCPU          = "metrics.cpu"
-	EventMemory       = "metrics.memory"
-	EventNetwork      = "metrics.network"
-	EventProcesses    = "metrics.processes"
-	EventAll          = "metrics.all"
-)
+func Stream[T any](ctx context.Context, node *NodeClient, path string, names []string, fn func(types.Event[T]) error) error {
+	allowed := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		allowed[name] = struct{}{}
+	}
 
-const (
-	EventPortsSnapshot = "ports.snapshot"
-	EventPortBound     = "port.bound"
-	EventPortReleased  = "port.released"
-)
-
-// Event is one server-sent event received from a tailkitd stream.
-type Event struct {
-	Name string
-	ID   int64
-	Data json.RawMessage
-}
-
-func (n *NodeClient) Stream(ctx context.Context, path string, fn func(Event) error) error {
-	return stream(ctx, n.httpClient(), func(lastID int64) (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, n.baseURL()+path, nil)
+	return stream(ctx, node.httpClient(), func(lastID int64) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, node.baseURL()+path, nil)
 		if err != nil {
 			return nil, fmt.Errorf("tailkit: build request %s: %w", path, err)
 		}
@@ -67,7 +58,23 @@ func (n *NodeClient) Stream(ctx context.Context, path string, fn func(Event) err
 		}
 		_ = json.Unmarshal(body, &errBody)
 		return mapAPIError(status, path, errBody.Error)
-	}, fn)
+	}, func(raw types.RawEvent) error {
+		rawEvent, err := DecodeEvent[json.RawMessage](raw)
+		if err != nil {
+			return fmt.Errorf("tailkit: %w", err)
+		}
+		if err := decodeStreamError(rawEvent); err != nil {
+			return err
+		}
+		if _, ok := allowed[raw.Name]; !ok {
+			return nil
+		}
+		event, err := DecodeEvent[T](raw)
+		if err != nil {
+			return err
+		}
+		return fn(event)
+	})
 }
 
 func stream(
@@ -75,7 +82,7 @@ func stream(
 	client *http.Client,
 	buildReq func(lastID int64) (*http.Request, error),
 	mapStatusError func(status int, body []byte) error,
-	fn func(Event) error,
+	fn func(types.RawEvent) error,
 ) error {
 	var lastID int64
 
@@ -103,7 +110,7 @@ func stream(
 			return mapStatusError(resp.StatusCode, body)
 		}
 
-		err = readSSE(resp.Body, func(e Event) error {
+		err = readSSE(resp.Body, func(e types.RawEvent) error {
 			if e.ID > 0 {
 				lastID = e.ID
 			}
@@ -121,7 +128,21 @@ func stream(
 	}
 }
 
-func readSSE(r io.Reader, fn func(Event) error) error {
+func DecodeEvent[T any](raw types.RawEvent) (types.Event[T], error) {
+	var data T
+	if len(raw.Data) > 0 {
+		if err := json.Unmarshal(raw.Data, &data); err != nil {
+			return Event[T]{}, fmt.Errorf("decode event %q: %w", raw.Name, err)
+		}
+	}
+	return Event[T]{
+		Name: raw.Name,
+		ID:   raw.ID,
+		Data: data,
+	}, nil
+}
+
+func readSSE(r io.Reader, fn func(types.RawEvent) error) error {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
@@ -136,7 +157,7 @@ func readSSE(r io.Reader, fn func(Event) error) error {
 		if name == "" && !hasID && len(dataLines) == 0 {
 			return nil
 		}
-		ev := Event{
+		ev := types.RawEvent{
 			Name: name,
 			Data: json.RawMessage(strings.Join(dataLines, "\n")),
 		}
@@ -190,108 +211,85 @@ func readSSE(r io.Reader, fn func(Event) error) error {
 	return dispatch()
 }
 
-func decodeStreamError(e Event) error {
-	if e.Name != "error" {
+func decodeStreamError[T any](e types.Event[T]) error {
+	if e.Name != EventError {
 		return nil
 	}
-	var payload struct {
-		Error string `json:"error"`
+	switch data := any(e.Data).(type) {
+	case json.RawMessage:
+		var payload struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(data, &payload); err != nil {
+			return fmt.Errorf("tailkit: decode stream error: %w", err)
+		}
+		if payload.Error == "" {
+			payload.Error = "remote stream error"
+		}
+		return fmt.Errorf("tailkit: %s", payload.Error)
+	default:
+		return nil
 	}
-	if err := json.Unmarshal(e.Data, &payload); err != nil {
-		return fmt.Errorf("tailkit: decode stream error: %w", err)
-	}
-	if payload.Error == "" {
-		payload.Error = "remote stream error"
-	}
-	return fmt.Errorf("tailkit: %s", payload.Error)
 }
 
-func (n *NodeClient) ExecJobStream(ctx context.Context, jobID string, fn func(types.JobEvent) error) error {
+func (n *NodeClient) ExecJobStream(ctx context.Context, jobID string, fn func(types.Event[types.JobUpdate]) error) error {
 	path := "/exec/jobs/" + url.PathEscape(jobID) + "?stream=true"
-	return n.Stream(ctx, path, func(e Event) error {
-		if err := decodeStreamError(e); err != nil {
+	return stream(ctx, n.httpClient(), func(lastID int64) (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, n.baseURL()+path, nil)
+		if err != nil {
+			return nil, fmt.Errorf("tailkit: build request %s: %w", path, err)
+		}
+		req.Header.Set("Accept", "text/event-stream")
+		if lastID > 0 {
+			req.Header.Set("Last-Event-ID", strconv.FormatInt(lastID, 10))
+		}
+		return req, nil
+	}, func(status int, body []byte) error {
+		var errBody struct {
+			Error string `json:"error"`
+		}
+		_ = json.Unmarshal(body, &errBody)
+		return mapAPIError(status, path, errBody.Error)
+	}, func(raw types.RawEvent) error {
+		rawEvent, err := DecodeEvent[json.RawMessage](raw)
+		if err != nil {
+			return fmt.Errorf("tailkit: %w", err)
+		}
+		if err := decodeStreamError(rawEvent); err != nil {
 			return err
 		}
-		switch e.Name {
+		switch raw.Name {
 		case EventJobStdout, EventJobStderr, EventJobStatus, EventJobCompleted, EventJobFailed:
-			var out types.JobEvent
-			if err := json.Unmarshal(e.Data, &out); err != nil {
-				return fmt.Errorf("tailkit: decode exec job stream event %q: %w", e.Name, err)
+			event, err := DecodeEvent[types.JobUpdate](raw)
+			if err != nil {
+				return err
 			}
-			out.Event = e.Name
-			return fn(out)
+			event.Data.Event = event.Name
+			return fn(event)
 		default:
 			return nil
 		}
 	})
 }
 
-func (dc *DockerClient) StreamLogs(ctx context.Context, containerID string, tail int, fn func(types.LogLine) error) error {
+func (dc *DockerClient) StreamLogs(ctx context.Context, containerID string, tail int, fn func(types.Event[types.LogLine]) error) error {
 	path := fmt.Sprintf("%s/containers/%s/logs?tail=%d&follow=true", dockerBase, url.PathEscape(containerID), tail)
-	return dc.node.Stream(ctx, path, func(e Event) error {
-		if err := decodeStreamError(e); err != nil {
-			return err
-		}
-		if e.Name != EventLogLine {
-			return nil
-		}
-		var out types.LogLine
-		if err := json.Unmarshal(e.Data, &out); err != nil {
-			return fmt.Errorf("tailkit: decode docker log stream event: %w", err)
-		}
-		return fn(out)
-	})
+	return Stream(ctx, dc.node, path, []string{EventLogLine}, fn)
 }
 
-func (dc *DockerClient) StreamStats(ctx context.Context, containerID string, fn func(container.StatsResponse) error) error {
+func (dc *DockerClient) StreamStats(ctx context.Context, containerID string, fn func(types.Event[container.StatsResponse]) error) error {
 	path := fmt.Sprintf("%s/containers/%s/stats", dockerBase, url.PathEscape(containerID))
-	return dc.node.Stream(ctx, path, func(e Event) error {
-		if err := decodeStreamError(e); err != nil {
-			return err
-		}
-		if e.Name != EventStatsSnapshot {
-			return nil
-		}
-		var out container.StatsResponse
-		if err := json.Unmarshal(e.Data, &out); err != nil {
-			return fmt.Errorf("tailkit: decode docker stats stream event: %w", err)
-		}
-		return fn(out)
-	})
+	return Stream(ctx, dc.node, path, []string{EventStatsSnapshot}, fn)
 }
 
-func (sc *SystemdClient) StreamJournal(ctx context.Context, unit string, lines int, fn func(types.JournalEntry) error) error {
+func (sc *SystemdClient) StreamJournal(ctx context.Context, unit string, lines int, fn func(types.Event[types.JournalEntry]) error) error {
 	path := fmt.Sprintf("%s/units/%s/journal?lines=%d&follow=true", systemdBase, url.PathEscape(unit), lines)
-	return sc.node.Stream(ctx, path, func(e Event) error {
-		if err := decodeStreamError(e); err != nil {
-			return err
-		}
-		if e.Name != EventJournalEntry {
-			return nil
-		}
-		var out types.JournalEntry
-		if err := json.Unmarshal(e.Data, &out); err != nil {
-			return fmt.Errorf("tailkit: decode journal stream event: %w", err)
-		}
-		return fn(out)
-	})
+	return Stream(ctx, sc.node, path, []string{EventJournalEntry}, fn)
 }
 
-func (sc *SystemdClient) StreamSystemJournal(ctx context.Context, lines int, fn func(types.JournalEntry) error) error {
+func (sc *SystemdClient) StreamSystemJournal(ctx context.Context, lines int, fn func(types.Event[types.JournalEntry]) error) error {
 	path := fmt.Sprintf("%s/journal?lines=%d&follow=true", systemdBase, lines)
-	return sc.node.Stream(ctx, path, func(e Event) error {
-		if err := decodeStreamError(e); err != nil {
-			return err
-		}
-		if e.Name != EventJournalEntry {
-			return nil
-		}
-		var out types.JournalEntry
-		if err := json.Unmarshal(e.Data, &out); err != nil {
-			return fmt.Errorf("tailkit: decode system journal stream event: %w", err)
-		}
-		return fn(out)
-	})
+	return Stream(ctx, sc.node, path, []string{EventJournalEntry}, fn)
 }
 
 func (mc *MetricsClient) PortsAvailable(ctx context.Context) (bool, error) {
@@ -302,115 +300,43 @@ func (mc *MetricsClient) PortsAvailable(ctx context.Context) (bool, error) {
 	return resp["available"], nil
 }
 
-func (mc *MetricsClient) Ports(ctx context.Context) ([]types.ListenPort, error) {
-	var out []types.ListenPort
+func (mc *MetricsClient) Ports(ctx context.Context) ([]types.Port, error) {
+	var out []types.Port
 	return out, mc.node.do(ctx, http.MethodGet, metricsBase+"/ports", nil, &out)
 }
 
-func (mc *MetricsClient) StreamCPU(ctx context.Context, fn func([]cpu.TimesStat) error) error {
-	return mc.node.Stream(ctx, metricsBase+"/cpu/stream", func(e Event) error {
-		if err := decodeStreamError(e); err != nil {
-			return err
-		}
-		if e.Name != EventCPU {
-			return nil
-		}
-		var out []cpu.TimesStat
-		if err := json.Unmarshal(e.Data, &out); err != nil {
-			return fmt.Errorf("tailkit: decode CPU stream event: %w", err)
-		}
-		return fn(out)
-	})
+func (mc *MetricsClient) StreamCPU(ctx context.Context, fn func(types.Event[types.CPU]) error) error {
+	return Stream(ctx, mc.node, metricsBase+"/cpu/stream", []string{EventCPU}, fn)
 }
 
-func (mc *MetricsClient) StreamMemory(ctx context.Context, fn func(*mem.VirtualMemoryStat) error) error {
-	return mc.node.Stream(ctx, metricsBase+"/memory/stream", func(e Event) error {
-		if err := decodeStreamError(e); err != nil {
-			return err
-		}
-		if e.Name != EventMemory {
-			return nil
-		}
-		var out mem.VirtualMemoryStat
-		if err := json.Unmarshal(e.Data, &out); err != nil {
-			return fmt.Errorf("tailkit: decode memory stream event: %w", err)
-		}
-		return fn(&out)
-	})
+func (mc *MetricsClient) StreamMemory(ctx context.Context, fn func(types.Event[types.Memory]) error) error {
+	return Stream(ctx, mc.node, metricsBase+"/memory/stream", []string{EventMemory}, fn)
 }
 
-func (mc *MetricsClient) StreamNetwork(ctx context.Context, fn func([]gopsnet.IOCountersStat) error) error {
-	return mc.node.Stream(ctx, metricsBase+"/network/stream", func(e Event) error {
-		if err := decodeStreamError(e); err != nil {
-			return err
-		}
-		if e.Name != EventNetwork {
-			return nil
-		}
-		var out []gopsnet.IOCountersStat
-		if err := json.Unmarshal(e.Data, &out); err != nil {
-			return fmt.Errorf("tailkit: decode network stream event: %w", err)
-		}
-		return fn(out)
-	})
+func (mc *MetricsClient) StreamNetwork(ctx context.Context, fn func(types.Event[[]gopsnet.IOCountersStat]) error) error {
+	return Stream(ctx, mc.node, metricsBase+"/network/stream", []string{EventNetwork}, fn)
 }
 
-func (mc *MetricsClient) StreamProcesses(ctx context.Context, fn func([]types.ProcessStat) error) error {
-	return mc.node.Stream(ctx, metricsBase+"/processes/stream", func(e Event) error {
-		if err := decodeStreamError(e); err != nil {
-			return err
-		}
-		if e.Name != EventProcesses {
-			return nil
-		}
-		var out []types.ProcessStat
-		if err := json.Unmarshal(e.Data, &out); err != nil {
-			return fmt.Errorf("tailkit: decode processes stream event: %w", err)
-		}
-		return fn(out)
-	})
+func (mc *MetricsClient) StreamProcesses(ctx context.Context, fn func(types.Event[[]types.Process]) error) error {
+	return Stream(ctx, mc.node, metricsBase+"/processes/stream", []string{EventProcesses}, fn)
 }
 
-func (mc *MetricsClient) StreamAll(ctx context.Context, fn func(types.AllMetrics) error) error {
-	return mc.node.Stream(ctx, metricsBase+"/all/stream", func(e Event) error {
-		if err := decodeStreamError(e); err != nil {
-			return err
-		}
-		if e.Name != EventAll {
-			return nil
-		}
-		var out types.AllMetrics
-		if err := json.Unmarshal(e.Data, &out); err != nil {
-			return fmt.Errorf("tailkit: decode all-metrics stream event: %w", err)
-		}
-		return fn(out)
-	})
+func (mc *MetricsClient) StreamAll(ctx context.Context, fn func(types.Event[types.Metrics]) error) error {
+	return Stream(ctx, mc.node, metricsBase+"/all/stream", []string{EventAll}, fn)
 }
 
-func (mc *MetricsClient) StreamPorts(ctx context.Context, fn func(types.PortEvent) error) error {
-	return mc.node.Stream(ctx, metricsBase+"/ports/stream", func(e Event) error {
-		if err := decodeStreamError(e); err != nil {
-			return err
-		}
-		switch e.Name {
-		case EventPortsSnapshot, EventPortBound, EventPortReleased:
-			var out types.PortEvent
-			if err := json.Unmarshal(e.Data, &out); err != nil {
-				return fmt.Errorf("tailkit: decode ports stream event %q: %w", e.Name, err)
+func (mc *MetricsClient) StreamPorts(ctx context.Context, fn func(types.Event[types.PortUpdate]) error) error {
+	return Stream(ctx, mc.node, metricsBase+"/ports/stream", []string{EventPortsSnapshot, EventPortBound, EventPortReleased}, func(event types.Event[types.PortUpdate]) error {
+		if event.Data.Kind == "" {
+			switch event.Name {
+			case EventPortsSnapshot:
+				event.Data.Kind = "snapshot"
+			case EventPortBound:
+				event.Data.Kind = "bound"
+			case EventPortReleased:
+				event.Data.Kind = "released"
 			}
-			if out.Kind == "" {
-				switch e.Name {
-				case EventPortsSnapshot:
-					out.Kind = "snapshot"
-				case EventPortBound:
-					out.Kind = "bound"
-				case EventPortReleased:
-					out.Kind = "released"
-				}
-			}
-			return fn(out)
-		default:
-			return nil
 		}
+		return fn(event)
 	})
 }

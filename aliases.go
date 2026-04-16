@@ -3,11 +3,14 @@ package tailkit
 import "github.com/wf-pro-dev/tailkit/types"
 
 type (
-	AllMetrics   = types.AllMetrics
+	CPU          = types.CPU
+	Event[T any] = types.Event[T]
 	JournalEntry = types.JournalEntry
-	JobEvent     = types.JobEvent
-	ListenPort   = types.ListenPort
+	JobUpdate    = types.JobUpdate
 	LogLine      = types.LogLine
-	PortEvent    = types.PortEvent
-	ProcessStat  = types.ProcessStat
+	Memory       = types.Memory
+	Metrics      = types.Metrics
+	Port         = types.Port
+	PortUpdate   = types.PortUpdate
+	Process      = types.Process
 )

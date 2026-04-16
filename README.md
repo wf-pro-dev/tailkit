@@ -33,12 +33,12 @@ tailkit.Install(ctx, types.Tool{Name: "devbox", Version: build.Version, TsnetHos
 
 // single node
 containers, err := tailkit.Node(srv, "vps-1").Docker().Containers(ctx)
-err = tailkit.Node(srv, "vps-1").Metrics().StreamPorts(ctx, func(e tailkit.PortEvent) error {
-    switch e.Kind {
+err = tailkit.Node(srv, "vps-1").Metrics().StreamPorts(ctx, func(e tailkit.Event[tailkit.PortUpdate]) error {
+    switch e.Data.Kind {
     case "snapshot":
-        // replace current local state with e.Ports
+        // replace current local state with e.Data.Ports
     case "bound", "released":
-        // update local state with e.Port
+        // update local state with e.Data.Port
     }
     return nil
 })
@@ -52,9 +52,9 @@ cpuByNode, errs := tailkit.Nodes(srv, peers).Metrics().CPU(ctx)
 
 ## Streaming APIs
 
-tailkit now exposes both a generic SSE client and typed stream helpers:
+tailkit now exposes a generic typed SSE helper plus typed stream helpers:
 
-- `node.Stream(ctx, path, fn)` for raw SSE access
+- `tailkit.Stream(node, ctx, path, eventNames, fn)`
 - `node.ExecJobStream(...)`
 - `node.Docker().StreamLogs(...)`
 - `node.Docker().StreamStats(...)`
@@ -69,7 +69,7 @@ tailkit now exposes both a generic SSE client and typed stream helpers:
 - `node.Metrics().PortsAvailable()`
 - `node.Metrics().StreamPorts(...)`
 
-The new metrics port APIs expose TCP listeners as `tailkit.ListenPort` values and stream changes as `tailkit.PortEvent`.
+Both `tailkit.Stream(...)` and the typed stream helpers use `tailkit.Event[T]`, preserving `Name` and `ID` alongside the decoded payload in `Data`.
 
 ---
 

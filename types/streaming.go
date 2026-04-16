@@ -10,9 +10,9 @@ import (
 	gopsutilnet "github.com/shirou/gopsutil/v4/net"
 )
 
-// JobEvent is the typed payload emitted by exec job streams.
+// JobUpdate is the typed payload emitted by exec job streams.
 // Event identifies the originating SSE event name.
-type JobEvent struct {
+type JobUpdate struct {
 	Event    string    `json:"-"`
 	JobID    string    `json:"job_id"`
 	Line     string    `json:"line,omitempty"`
@@ -28,10 +28,10 @@ type LogLine struct {
 	Stream      string    `json:"stream"`
 	TS          time.Time `json:"ts"`
 	Line        string    `json:"line"`
-} // streams.go:18
+}
 
-// CPUResult bundles per-CPU usage percentages with static CPU info.
-type CPUResult struct {
+// CPU bundles per-CPU usage percentages with static CPU info.
+type CPU struct {
 	Info    []gopsutilcpu.InfoStat `json:"info"`
 	Percent []float64              `json:"percent_per_cpu"`
 	Total   float64                `json:"percent_total"`
@@ -46,7 +46,7 @@ type JournalEntry struct {
 	Fields    map[string]string `json:"fields,omitempty"`
 }
 
-type ProcessStat struct {
+type Process struct {
 	PID        int32   `json:"pid"`
 	Name       string  `json:"name"`
 	Status     string  `json:"status"`
@@ -55,12 +55,12 @@ type ProcessStat struct {
 	Cmdline    string  `json:"cmdline"`
 }
 
-type MemoryResult struct {
+type Memory struct {
 	Virtual *gopsutilmem.VirtualMemoryStat `json:"virtual"`
 	Swap    *gopsutilmem.SwapMemoryStat    `json:"swap"`
 }
 
-type ListenPort struct {
+type Port struct {
 	Addr    string `json:"addr"`
 	Port    uint16 `json:"port"`
 	Proto   string `json:"proto"`
@@ -68,23 +68,23 @@ type ListenPort struct {
 	Process string `json:"process"`
 }
 
-// AllMetrics is the typed payload emitted by the metrics all stream.
-type AllMetrics struct {
+// Metrics is the typed payload emitted by the metrics all stream.
+type Metrics struct {
 	Host      *gopsutilhost.InfoStat       `json:"host,omitempty"`
-	CPU       *CPUResult                   `json:"cpu,omitempty"`
-	Memory    *MemoryResult                `json:"memory,omitempty"`
+	CPU       *CPU                         `json:"cpu,omitempty"`
+	Memory    *Memory                      `json:"memory,omitempty"`
 	Disk      []*gopsutildisk.UsageStat    `json:"disk,omitempty"`
 	Network   []gopsutilnet.IOCountersStat `json:"network,omitempty"`
-	Processes []ProcessStat                `json:"processes,omitempty"`
-	Ports     []ListenPort                 `json:"ports,omitempty"`
+	Processes []Process                    `json:"processes,omitempty"`
+	Ports     []Port                       `json:"ports,omitempty"`
 } // metrics/handler328
 
-// ListenPort describes one TCP socket in the LISTEN state.
+// Port describes one TCP socket in the LISTEN state.
 
-// PortEvent is the typed payload emitted by the metrics ports stream.
+// PortUpdate is the typed payload emitted by the metrics ports stream.
 // Snapshot events populate Ports; delta events populate Port.
-type PortEvent struct {
-	Kind  string       `json:"kind"`
-	Port  ListenPort   `json:"port,omitempty"`
-	Ports []ListenPort `json:"ports,omitempty"`
+type PortUpdate struct {
+	Kind  string `json:"kind"`
+	Port  Port   `json:"port,omitempty"`
+	Ports []Port `json:"ports,omitempty"`
 }
