@@ -10,6 +10,44 @@ node := tailkit.Node(srv, "vps-1")
 
 ---
 
+## Streaming
+
+Streaming endpoints use server-sent events (SSE). tailkit exposes them in two layers:
+
+1. `node.Stream(ctx, path, fn)` for raw SSE access
+2. Typed helpers such as `ExecJobStream`, `StreamLogs`, and `Metrics().StreamPorts(...)`
+
+Each event arrives as:
+
+```go
+type Event struct {
+    Name string
+    ID   int64
+    Data json.RawMessage
+}
+```
+
+`NodeClient.Stream` automatically sets `Accept: text/event-stream` and re-sends `Last-Event-ID` when reconnecting with a previously seen event ID.
+
+```go
+err := node.Stream(ctx, "/integrations/metrics/ports/stream", func(e tailkit.Event) error {
+    switch e.Name {
+    case tailkit.EventPortsSnapshot:
+        var snapshot tailkit.PortEvent
+        return json.Unmarshal(e.Data, &snapshot)
+    case tailkit.EventPortBound, tailkit.EventPortReleased:
+        var change tailkit.PortEvent
+        return json.Unmarshal(e.Data, &change)
+    default:
+        return nil
+    }
+})
+```
+
+Typed streaming helpers usually ignore unrelated events and decode only the event names they own.
+
+---
+
 ## Tools
 
 ```go
@@ -98,6 +136,24 @@ vars, err := tailkit.Node(srv, "vps-1").Vars("myapp", "prod").List(ctx)
 err        = tailkit.ExecWith(ctx, vars, []string{"/usr/bin/node", "server.js"})
 ```
 
+### Exec job streams
+
+```go
+job, err := tailkit.Node(srv, "vps-1").Docker().Start(ctx, "my-app")
+
+err = tailkit.Node(srv, "vps-1").ExecJobStream(ctx, job.JobID, func(e tailkit.JobEvent) error {
+    switch e.Event {
+    case tailkit.EventJobStdout, tailkit.EventJobStderr:
+        // e.Line
+    case tailkit.EventJobStatus:
+        // e.Status
+    case tailkit.EventJobCompleted, tailkit.EventJobFailed:
+        // e.ExitCode / e.Error
+    }
+    return nil
+})
+```
+
 ---
 
 ## Docker
@@ -112,6 +168,13 @@ available, _ := dc.Available(ctx)
 containers, err := dc.Containers(ctx)
 detail, err     := dc.Container(ctx, "my-app")
 logs, err       := dc.Logs(ctx, "my-app", 100)
+err             = dc.StreamLogs(ctx, "my-app", 100, func(line tailkit.LogLine) error {
+    // line.Stream, line.Line, line.TS
+    return nil
+})
+err             = dc.StreamStats(ctx, "my-app", func(stat container.StatsResponse) error {
+    return nil
+})
 job, err        := dc.Start(ctx, "my-app")
 job, err         = dc.Stop(ctx, "my-app")
 job, err         = dc.Restart(ctx, "my-app")
@@ -159,6 +222,13 @@ job, err      = sc.Enable(ctx, "nginx.service")
 job, err      = sc.Disable(ctx, "nginx.service")
 entries, err := sc.Journal(ctx, "nginx.service", 100)
 entries, err  = sc.SystemJournal(ctx, 100)
+err          = sc.StreamJournal(ctx, "nginx.service", 100, func(entry tailkit.JournalEntry) error {
+    // entry.Message, entry.Unit, entry.Fields
+    return nil
+})
+err          = sc.StreamSystemJournal(ctx, 100, func(entry tailkit.JournalEntry) error {
+    return nil
+})
 ```
 
 ---
@@ -169,11 +239,40 @@ entries, err  = sc.SystemJournal(ctx, 100)
 mc := tailkit.Node(srv, "vps-1").Metrics()
 
 available, _   := mc.Available(ctx)
+portsAvailable, err := mc.PortsAvailable(ctx)
 host, err      := mc.Host(ctx)
 cpu, err       := mc.CPU(ctx)
 memory, err    := mc.Memory(ctx)
 disks, err     := mc.Disk(ctx)
 network, err   := mc.Network(ctx)
-processes, err := mc.Processes(ctx)
+processes, err := mc.Processes(ctx) // []map[string]any snapshot endpoint
 all, err       := mc.All(ctx)
+ports, err     := mc.Ports(ctx)
+
+err = mc.StreamCPU(ctx, func(stat []cpu.TimesStat) error {
+    return nil
+})
+err = mc.StreamMemory(ctx, func(stat *mem.VirtualMemoryStat) error {
+    return nil
+})
+err = mc.StreamNetwork(ctx, func(stat []net.IOCountersStat) error {
+    return nil
+})
+err = mc.StreamProcesses(ctx, func(stat []tailkit.ProcessStat) error {
+    return nil
+})
+err = mc.StreamAll(ctx, func(stat tailkit.AllMetrics) error {
+    return nil
+})
+err = mc.StreamPorts(ctx, func(e tailkit.PortEvent) error {
+    switch e.Kind {
+    case "snapshot":
+        // e.Ports
+    case "bound", "released":
+        // e.Port
+    }
+    return nil
+})
 ```
+
+Snapshot endpoints remain available alongside the stream helpers. `StreamPorts` emits one `snapshot` event on connect, then `bound` and `released` deltas. `StreamAll` decodes into `tailkit.AllMetrics`, which includes typed `CPU`, `Memory`, `Disk`, `Network`, `Processes`, and `Ports` sections when present.

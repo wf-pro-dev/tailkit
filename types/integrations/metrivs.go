@@ -12,6 +12,7 @@ type MetricsConfig struct {
 	Disk      DiskMetricsConfig    `toml:"disk"`
 	Network   NetworkMetricsConfig `toml:"network"`
 	Processes ProcessMetricsConfig `toml:"processes"`
+	Ports     PortMetricsConfig    `toml:"ports"`
 }
 
 // HostMetricsConfig controls GET /integrations/metrics/host.
@@ -57,4 +58,9 @@ type ProcessMetricsConfig struct {
 	// Uses a pointer so we can distinguish "omitted" (nil → default 20)
 	// from "explicitly set to 0" (→ validation error).
 	Limit *int `toml:"limit"`
+}
+
+// PortMetricsConfig controls GET /integrations/metrics/ports.
+type PortMetricsConfig struct {
+	Enabled bool `toml:"enabled"`
 }
