@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+	"time"
 
 	"tailscale.com/client/local"
 	"tailscale.com/tsnet"
@@ -24,6 +26,12 @@ type ServerConfig struct {
 // Server is a tailkit-managed tsnet server.
 type Server struct {
 	*tsnet.Server
+
+	httpTransport *http.Transport
+	httpClient    *http.Client
+
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // NewServer constructs and starts a tsnet server.
@@ -57,7 +65,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		return nil, fmt.Errorf("tailkit: failed to start tsnet server: %w", err)
 	}
 
-	srv := &Server{Server: ts}
+	srv := newServer(ts)
 
 	go func() {
 		ch := make(chan os.Signal, 1)
@@ -67,6 +75,51 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}()
 
 	return srv, nil
+}
+
+func newServer(ts *tsnet.Server) *Server {
+	transport := &http.Transport{
+		DialContext:         ts.Dial,
+		ForceAttemptHTTP2:   false,
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+	}
+
+	return &Server{
+		Server:        ts,
+		httpTransport: transport,
+		httpClient: &http.Client{
+			Transport: transport,
+			Timeout:   60 * time.Second,
+		},
+	}
+}
+
+// HTTPClient returns the shared HTTP client used for outbound peer requests.
+func (s *Server) HTTPClient() *http.Client {
+	if s == nil {
+		return nil
+	}
+	return s.httpClient
+}
+
+// Close shuts down the shared HTTP transport and underlying tsnet server.
+func (s *Server) Close() error {
+	if s == nil {
+		return nil
+	}
+
+	s.closeOnce.Do(func() {
+		if s.httpTransport != nil {
+			s.httpTransport.CloseIdleConnections()
+		}
+		if s.Server != nil {
+			s.closeErr = s.Server.Close()
+		}
+	})
+
+	return s.closeErr
 }
 
 // localClient returns the *local.Client for this server.

@@ -50,12 +50,7 @@ type NodeClient struct {
 // caller's own tsnet server, enabling direct node-to-node communication
 // without leaving the tailnet.
 func (n *NodeClient) httpClient() *http.Client {
-	return &http.Client{
-		Transport: &http.Transport{
-			DialContext: n.srv.Server.Dial,
-		},
-		Timeout: 60 * time.Second,
-	}
+	return n.srv.HTTPClient()
 }
 
 // baseURL returns the base URL for the target node's tailkitd.
