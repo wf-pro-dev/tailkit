@@ -18,7 +18,6 @@ import (
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/wf-pro-dev/tailkit/types"
 	integrationsTypes "github.com/wf-pro-dev/tailkit/types/integrations"
-	"tailscale.com/tsnet"
 )
 
 // ─── Node ─────────────────────────────────────────────────────────────────────
@@ -51,6 +50,10 @@ type NodeClient struct {
 // without leaving the tailnet.
 func (n *NodeClient) httpClient() *http.Client {
 	return n.srv.HTTPClient()
+}
+
+func (n *NodeClient) streamHTTPClient() *http.Client {
+	return n.srv.StreamHTTPClient()
 }
 
 // baseURL returns the base URL for the target node's tailkitd.
@@ -767,8 +770,3 @@ func (mc *MetricsClient) All(ctx context.Context) (map[string]any, error) {
 	var out map[string]any
 	return out, mc.node.do(ctx, http.MethodGet, metricsBase+"/all", nil, &out)
 }
-
-// ─── tsnet dial helper ────────────────────────────────────────────────────────
-
-// Ensure tsnet import is used.
-var _ *tsnet.Server

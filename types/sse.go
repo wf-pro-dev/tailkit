@@ -11,6 +11,9 @@ const (
 	EventJobCompleted = "job.completed"
 	EventJobFailed    = "job.failed"
 
+	EventDockerContainer = "docker.container"
+	EventDockerAll       = "docker.all"
+
 	EventLogLine       = "log.line"
 	EventStatsSnapshot = "stats.snapshot"
 

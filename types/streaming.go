@@ -3,12 +3,15 @@ package types
 import (
 	"time"
 
+	"github.com/docker/docker/api/types/events"
 	gopsutilcpu "github.com/shirou/gopsutil/v4/cpu"
 	gopsutildisk "github.com/shirou/gopsutil/v4/disk"
 	gopsutilhost "github.com/shirou/gopsutil/v4/host"
 	gopsutilmem "github.com/shirou/gopsutil/v4/mem"
 	gopsutilnet "github.com/shirou/gopsutil/v4/net"
 )
+
+type DockerEvent = events.Message
 
 // JobUpdate is the typed payload emitted by exec job streams.
 // Event identifies the originating SSE event name.

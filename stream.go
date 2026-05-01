@@ -17,23 +17,25 @@ import (
 )
 
 const (
-	EventError         = types.EventError
-	EventJobStdout     = types.EventJobStdout
-	EventJobStderr     = types.EventJobStderr
-	EventJobStatus     = types.EventJobStatus
-	EventJobCompleted  = types.EventJobCompleted
-	EventJobFailed     = types.EventJobFailed
-	EventLogLine       = types.EventLogLine
-	EventStatsSnapshot = types.EventStatsSnapshot
-	EventJournalEntry  = types.EventJournalEntry
-	EventCPU           = types.EventCPU
-	EventMemory        = types.EventMemory
-	EventNetwork       = types.EventNetwork
-	EventProcesses     = types.EventProcesses
-	EventAll           = types.EventAll
-	EventPortsSnapshot = types.EventPortsSnapshot
-	EventPortBound     = types.EventPortBound
-	EventPortReleased  = types.EventPortReleased
+	EventError           = types.EventError
+	EventJobStdout       = types.EventJobStdout
+	EventJobStderr       = types.EventJobStderr
+	EventJobStatus       = types.EventJobStatus
+	EventJobCompleted    = types.EventJobCompleted
+	EventJobFailed       = types.EventJobFailed
+	EventDockerContainer = types.EventDockerContainer
+	EventDockerAll       = types.EventDockerAll
+	EventLogLine         = types.EventLogLine
+	EventStatsSnapshot   = types.EventStatsSnapshot
+	EventJournalEntry    = types.EventJournalEntry
+	EventCPU             = types.EventCPU
+	EventMemory          = types.EventMemory
+	EventNetwork         = types.EventNetwork
+	EventProcesses       = types.EventProcesses
+	EventAll             = types.EventAll
+	EventPortsSnapshot   = types.EventPortsSnapshot
+	EventPortBound       = types.EventPortBound
+	EventPortReleased    = types.EventPortReleased
 )
 
 func Stream[T any](ctx context.Context, node *NodeClient, path string, names []string, fn func(types.Event[T]) error) error {
@@ -42,7 +44,7 @@ func Stream[T any](ctx context.Context, node *NodeClient, path string, names []s
 		allowed[name] = struct{}{}
 	}
 
-	return stream(ctx, node.httpClient(), func(lastID int64) (*http.Request, error) {
+	return stream(ctx, node.streamHTTPClient(), func(lastID int64) (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, node.baseURL()+path, nil)
 		if err != nil {
 			return nil, fmt.Errorf("tailkit: build request %s: %w", path, err)
@@ -234,7 +236,7 @@ func decodeStreamError[T any](e types.Event[T]) error {
 
 func (n *NodeClient) ExecJobStream(ctx context.Context, jobID string, fn func(types.Event[types.JobUpdate]) error) error {
 	path := "/exec/jobs/" + url.PathEscape(jobID) + "?stream=true"
-	return stream(ctx, n.httpClient(), func(lastID int64) (*http.Request, error) {
+	return stream(ctx, n.streamHTTPClient(), func(lastID int64) (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, n.baseURL()+path, nil)
 		if err != nil {
 			return nil, fmt.Errorf("tailkit: build request %s: %w", path, err)
@@ -272,9 +274,19 @@ func (n *NodeClient) ExecJobStream(ctx context.Context, jobID string, fn func(ty
 	})
 }
 
+func (n *DockerClient) StreamContainers(ctx context.Context, fn func(types.Event[types.DockerEvent]) error) error {
+	path := fmt.Sprintf("%s/containers/stream", dockerBase)
+	return Stream(ctx, n.node, path, []string{EventDockerContainer}, fn)
+}
+
 func (dc *DockerClient) StreamLogs(ctx context.Context, containerID string, tail int, fn func(types.Event[types.LogLine]) error) error {
 	path := fmt.Sprintf("%s/containers/%s/logs?tail=%d&follow=true", dockerBase, url.PathEscape(containerID), tail)
 	return Stream(ctx, dc.node, path, []string{EventLogLine}, fn)
+}
+
+func (n *DockerClient) StreamAll(ctx context.Context, fn func(types.Event[types.DockerEvent]) error) error {
+	path := fmt.Sprintf("%s/stream", dockerBase)
+	return Stream(ctx, n.node, path, []string{EventDockerAll}, fn)
 }
 
 func (dc *DockerClient) StreamStats(ctx context.Context, containerID string, fn func(types.Event[container.StatsResponse]) error) error {

@@ -27,8 +27,9 @@ type ServerConfig struct {
 type Server struct {
 	*tsnet.Server
 
-	httpTransport *http.Transport
-	httpClient    *http.Client
+	httpTransport    *http.Transport
+	httpClient       *http.Client
+	streamHTTPClient *http.Client
 
 	closeOnce sync.Once
 	closeErr  error
@@ -93,6 +94,11 @@ func newServer(ts *tsnet.Server) *Server {
 			Transport: transport,
 			Timeout:   60 * time.Second,
 		},
+		// Long-lived SSE streams must be bounded by request context rather than
+		// http.Client.Timeout, which applies to the full response body lifetime.
+		streamHTTPClient: &http.Client{
+			Transport: transport,
+		},
 	}
 }
 
@@ -102,6 +108,14 @@ func (s *Server) HTTPClient() *http.Client {
 		return nil
 	}
 	return s.httpClient
+}
+
+// StreamHTTPClient returns the shared HTTP client used for long-lived streams.
+func (s *Server) StreamHTTPClient() *http.Client {
+	if s == nil {
+		return nil
+	}
+	return s.streamHTTPClient
 }
 
 // Close shuts down the shared HTTP transport and underlying tsnet server.
