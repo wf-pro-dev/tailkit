@@ -11,11 +11,10 @@ import (
 	"tailscale.com/types/key"
 )
 
-var (
-	Peers       map[key.NodePublic]*ipnstate.PeerStatus
-	lastUpdated time.Time
-	TTL         = 15 * time.Minute
-)
+type peerCacheEntry struct {
+	peers     map[key.NodePublic]*ipnstate.PeerStatus
+	fetchedAt time.Time
+}
 
 // Discover finds all online tailnet peers that have the named tool installed.
 // An empty minVersion matches any version.
@@ -80,9 +79,8 @@ func DiscoverVersion(ctx context.Context, srv *Server, toolName, minVersion stri
 // ─── peer discovery ───────────────────────────────────────────────────────────
 
 func GetPeers(ctx context.Context, srv *Server) (map[key.NodePublic]*ipnstate.PeerStatus, error) {
-
-	if time.Since(lastUpdated) < TTL && len(Peers) > 0 {
-		return Peers, nil
+	if peers, ok := srv.getCachedPeers("tailscale-status"); ok {
+		return peers, nil
 	}
 
 	lc := srv.localClient()
@@ -95,10 +93,8 @@ func GetPeers(ctx context.Context, srv *Server) (map[key.NodePublic]*ipnstate.Pe
 		return nil, err
 	}
 
-	Peers = status.Peer
-	lastUpdated = time.Now()
-
-	return Peers, nil
+	srv.setCachedPeers("tailscale-status", status.Peer)
+	return status.Peer, nil
 }
 
 func AllPeers(ctx context.Context, srv *Server) ([]types.Peer, error) {
@@ -206,4 +202,46 @@ func GetTailkitPeer(ctx context.Context, srv *Server, hostname string) (*types.T
 
 func GetPeerTools(ctx context.Context, srv *Server, tailscaleIP string) ([]types.Tool, error) {
 	return []types.Tool{}, nil
+}
+
+func (s *Server) peerCacheTTL() time.Duration {
+	if s == nil || s.Config.PeerCacheTTL <= 0 {
+		return 15 * time.Minute
+	}
+	return s.Config.PeerCacheTTL
+}
+
+func (s *Server) getCachedPeers(cacheKey string) (map[key.NodePublic]*ipnstate.PeerStatus, bool) {
+	if s == nil {
+		return nil, false
+	}
+
+	s.peerCacheMu.RLock()
+	defer s.peerCacheMu.RUnlock()
+
+	item, ok := s.peerCache[cacheKey]
+	if !ok || len(item.peers) == 0 {
+		return nil, false
+	}
+	if time.Since(item.fetchedAt) > s.peerCacheTTL() {
+		return nil, false
+	}
+	return item.peers, true
+}
+
+func (s *Server) setCachedPeers(cacheKey string, peers map[key.NodePublic]*ipnstate.PeerStatus) {
+	if s == nil {
+		return
+	}
+
+	s.peerCacheMu.Lock()
+	defer s.peerCacheMu.Unlock()
+
+	if s.peerCache == nil {
+		s.peerCache = make(map[string]peerCacheEntry)
+	}
+	s.peerCache[cacheKey] = peerCacheEntry{
+		peers:     peers,
+		fetchedAt: time.Now(),
+	}
 }

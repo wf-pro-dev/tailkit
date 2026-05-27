@@ -40,6 +40,9 @@ func TestNewServerInitializesHTTPClients(t *testing.T) {
 	if got := srv.StreamHTTPClient().Timeout; got != 0 {
 		t.Fatalf("expected stream client timeout 0, got %v", got)
 	}
+	if got := srv.Config.PeerCacheTTL; got != 15*time.Minute {
+		t.Fatalf("expected default peer cache TTL 15m, got %v", got)
+	}
 }
 
 func TestNodeClientHTTPClientReusesServerClients(t *testing.T) {

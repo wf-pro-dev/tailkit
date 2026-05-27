@@ -2,7 +2,7 @@
 
 ## Peer discovery
 
-Before fanning out to multiple nodes, retrieve the peer list. All peer functions query via the local Tailscale daemon and cache results for 15 minutes (configurable via `tailkit.TTL`).
+Before fanning out to multiple nodes, retrieve the peer list. All peer functions query via the local Tailscale daemon and cache results for 15 minutes by default. Override this per server with `tailkit.ServerConfig.PeerCacheTTL`.
 
 ```go
 // all online peers running tailkitd

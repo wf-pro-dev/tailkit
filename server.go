@@ -17,19 +17,24 @@ import (
 
 // ServerConfig holds configuration for a tailkit-managed tsnet server.
 type ServerConfig struct {
-	Hostname  string
-	AuthKey   string
-	StateDir  string
-	Ephemeral bool
+	Hostname     string
+	AuthKey      string
+	StateDir     string
+	Ephemeral    bool
+	PeerCacheTTL time.Duration
 }
 
 // Server is a tailkit-managed tsnet server.
 type Server struct {
 	*tsnet.Server
+	Config ServerConfig
 
 	httpTransport    *http.Transport
 	httpClient       *http.Client
 	streamHTTPClient *http.Client
+
+	peerCache   map[string]peerCacheEntry
+	peerCacheMu sync.RWMutex
 
 	closeOnce sync.Once
 	closeErr  error
@@ -67,6 +72,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 
 	srv := newServer(ts)
+	srv.Config = cfg
 
 	go func() {
 		ch := make(chan os.Signal, 1)
@@ -89,6 +95,7 @@ func newServer(ts *tsnet.Server) *Server {
 
 	return &Server{
 		Server:        ts,
+		Config:        ServerConfig{PeerCacheTTL: 15 * time.Minute},
 		httpTransport: transport,
 		httpClient: &http.Client{
 			Transport: transport,
@@ -99,6 +106,7 @@ func newServer(ts *tsnet.Server) *Server {
 		streamHTTPClient: &http.Client{
 			Transport: transport,
 		},
+		peerCache: make(map[string]peerCacheEntry),
 	}
 }
 
