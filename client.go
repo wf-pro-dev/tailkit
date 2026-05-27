@@ -160,9 +160,52 @@ func mapAPIError(status int, path, msg string) error {
 		return fmt.Errorf("tailkit: not found: %s", msg)
 	case http.StatusForbidden:
 		return types.ErrPermissionDenied
+	case http.StatusUnauthorized:
+		return types.ErrUnauthorized
+	case http.StatusConflict:
+		return types.ErrConflict
 	default:
 		return fmt.Errorf("tailkit: HTTP %d from %s: %s", status, path, msg)
 	}
+}
+
+// Host fetches unified host metadata for this node.
+func (n *NodeClient) Host(ctx context.Context) (*Host, error) {
+	var host Host
+	if err := n.do(ctx, http.MethodGet, "/host", nil, &host); err != nil {
+		return nil, err
+	}
+	if host.Tags == nil {
+		host.Tags = []string{}
+	}
+	if host.Metadata == nil {
+		host.Metadata = map[string]string{}
+	}
+	if host.TSIPs == nil {
+		host.TSIPs = []string{}
+	}
+	return &host, nil
+}
+
+// Services fetches the unified service inventory for this node.
+func (n *NodeClient) Services(ctx context.Context) ([]Service, error) {
+	var services []Service
+	if err := n.do(ctx, http.MethodGet, "/services", nil, &services); err != nil {
+		return nil, err
+	}
+	if services == nil {
+		return []Service{}, nil
+	}
+	for i := range services {
+		services[i].NodeName = n.Hostname()
+		if services[i].Tags == nil {
+			services[i].Tags = []string{}
+		}
+		if services[i].ExpectedPorts == nil {
+			services[i].ExpectedPorts = []uint16{}
+		}
+	}
+	return services, nil
 }
 
 // ─── Tools ────────────────────────────────────────────────────────────────────

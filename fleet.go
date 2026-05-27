@@ -28,6 +28,27 @@ func Nodes(srv *Server, peers []types.Peer) *FleetClient {
 	return &FleetClient{srv: srv, peers: peers}
 }
 
+// Hosts fetches unified host metadata from all nodes concurrently.
+func (f *FleetClient) Hosts(ctx context.Context) (map[string]*Host, map[string]error) {
+	return fanOut(ctx, f.peers, func(ctx context.Context, p types.Peer) (*Host, error) {
+		return Node(f.srv, p.Status.HostName).Host(ctx)
+	})
+}
+
+// Services fetches and flattens services from all reachable nodes.
+// Per-node failures are skipped so partial fleet state is still usable.
+func (f *FleetClient) Services(ctx context.Context) []Service {
+	byNode, _ := fanOut(ctx, f.peers, func(ctx context.Context, p types.Peer) ([]Service, error) {
+		return Node(f.srv, p.Status.HostName).Services(ctx)
+	})
+
+	services := make([]Service, 0)
+	for _, nodeServices := range byNode {
+		services = append(services, nodeServices...)
+	}
+	return services
+}
+
 // fanOut runs fn on every peer concurrently, bounded to fleetConcurrency.
 // Results and errors are collected per-node — one node's failure never
 // prevents results from other nodes.
