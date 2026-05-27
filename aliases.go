@@ -14,3 +14,8 @@ type (
 	PortUpdate   = types.PortUpdate
 	Process      = types.Process
 )
+
+var (
+	ErrConflict     = types.ErrConflict
+	ErrUnauthorized = types.ErrUnauthorized
+)

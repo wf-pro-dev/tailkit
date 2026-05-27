@@ -29,20 +29,13 @@ import (
 //
 // Node construction is free — no network calls are made until a method is
 // called on the returned client or one of its sub-clients.
-func Node(srv *Server, hostname string) *NodeClient {
-	ctx := context.Background()
-	tailkitd, err := GetTailkitPeer(ctx, srv, hostname)
-	if err != nil {
-		return &NodeClient{srv: srv, tailkitd: nil}
-	}
-	return &NodeClient{srv: srv, tailkitd: tailkitd}
-}
+func Node(srv *Server, hostname string) *NodeClient { return &NodeClient{srv: srv, hostname: hostname} }
 
 // NodeClient is the entry point for all operations on a single tailkitd node.
 // Obtain one via tailkit.Node(srv, "hostname").
 type NodeClient struct {
 	srv      *Server
-	tailkitd *types.TailkitPeer
+	hostname string
 }
 
 // httpClient returns an *http.Client that routes connections through the
@@ -58,18 +51,28 @@ func (n *NodeClient) streamHTTPClient() *http.Client {
 
 // baseURL returns the base URL for the target node's tailkitd.
 func (n *NodeClient) baseURL() string {
-	return "http://" + n.tailkitd.Status.HostName
+	return "http://" + GetTailkitHostname(n.hostname)
 }
+
+// Hostname returns the logical node hostname without the tailkitd prefix.
+func (n *NodeClient) Hostname() string { return n.hostname }
 
 // do executes an HTTP request against the node and decodes the JSON response
 // into out. If out is nil the response body is discarded.
 func (n *NodeClient) do(ctx context.Context, method, path string, body io.Reader, out any) error {
+	return n.doWithHeaders(ctx, method, path, body, out, nil)
+}
+
+func (n *NodeClient) doWithHeaders(ctx context.Context, method, path string, body io.Reader, out any, configure func(*http.Request)) error {
 	req, err := http.NewRequestWithContext(ctx, method, n.baseURL()+path, body)
 	if err != nil {
 		return fmt.Errorf("tailkit: build request %s %s: %w", method, path, err)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/octet-stream")
+	}
+	if configure != nil {
+		configure(req)
 	}
 
 	resp, err := n.httpClient().Do(req)
@@ -312,7 +315,7 @@ func (fc *FilesClient) Send(ctx context.Context, req types.SendRequest) (types.S
 		Filename:     req.Filename,
 		ToolName:     req.ToolName,
 		LocalPath:    req.LocalPath,
-		DestMachine:  fc.node.tailkitd.Status.HostName,
+		DestMachine:  GetTailkitHostname(fc.node.Hostname()),
 		Success:      false,
 		WrittenTo:    req.DestPath,
 		BytesWritten: 0,
@@ -360,7 +363,7 @@ func (fc *FilesClient) Send(ctx context.Context, req types.SendRequest) (types.S
 	}
 
 	result.LocalPath = req.LocalPath
-	result.DestMachine = fc.node.tailkitd.Status.HostName
+	result.DestMachine = GetTailkitHostname(fc.node.Hostname())
 	result.Success = true
 
 	return result, nil

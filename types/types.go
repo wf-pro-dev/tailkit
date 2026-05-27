@@ -16,6 +16,8 @@ var (
 	ErrMetricsUnavailable   = errors.New("tailkit: node has no metrics.toml")
 	ErrVarScopeNotFound     = errors.New("tailkit: project/env scope not in vars.toml")
 	ErrPermissionDenied     = errors.New("tailkit: ACL cap or node config blocked the operation")
+	ErrUnauthorized         = errors.New("tailkit: unauthorized")
+	ErrConflict             = errors.New("tailkit: conflict")
 )
 
 // ─── Arg pattern constants ────────────────────────────────────────────────────

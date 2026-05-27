@@ -42,9 +42,8 @@ func TestStreamUsesStreamHTTPClient(t *testing.T) {
 				}),
 			},
 		},
-		tailkitd: &types.TailkitPeer{},
+		hostname: "example",
 	}
-	node.tailkitd.Status.HostName = "example.test"
 
 	calls := 0
 	err := Stream(context.Background(), node, "/metrics/cpu/stream", []string{EventCPU}, func(event types.Event[types.CPU]) error {
@@ -88,9 +87,8 @@ func TestNodeDoUsesTimedHTTPClient(t *testing.T) {
 				}),
 			},
 		},
-		tailkitd: &types.TailkitPeer{},
+		hostname: "example",
 	}
-	node.tailkitd.Status.HostName = "example.test"
 
 	var out map[string]bool
 	if err := node.do(context.Background(), http.MethodGet, "/metrics/ports/available", nil, &out); err != nil {
