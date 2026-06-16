@@ -51,11 +51,16 @@ func (n *NodeClient) streamHTTPClient() *http.Client {
 
 // baseURL returns the base URL for the target node's tailkitd.
 func (n *NodeClient) baseURL() string {
-	return "http://" + GetTailkitHostname(n.hostname)
+	return "http://" + tailkitdHostname(n.hostname)
 }
 
 // Hostname returns the logical node hostname without the tailkitd prefix.
 func (n *NodeClient) Hostname() string { return n.hostname }
+
+// tailkitdHostname returns the tsnet hostname for a host's tailkitd sidecar.
+func tailkitdHostname(hostname string) string {
+	return "tailkitd-" + hostname
+}
 
 // do executes an HTTP request against the node and decodes the JSON response
 // into out. If out is nil the response body is discarded.
@@ -184,26 +189,25 @@ func (n *NodeClient) Host(ctx context.Context) (*Host, error) {
 	if host.TSIPs == nil {
 		host.TSIPs = []string{}
 	}
+	if host.Peer != nil && host.Peer.IPs == nil {
+		host.Peer.IPs = []string{}
+	}
 	return &host, nil
 }
 
 // Services fetches the unified service inventory for this node.
-func (n *NodeClient) Services(ctx context.Context) ([]Service, error) {
-	var services []Service
+func (n *NodeClient) Services(ctx context.Context) ([]types.Service, error) {
+	var services []types.Service
 	if err := n.do(ctx, http.MethodGet, "/services", nil, &services); err != nil {
 		return nil, err
 	}
 	if services == nil {
-		return []Service{}, nil
+		return []types.Service{}, nil
 	}
 	for i := range services {
 		services[i].NodeName = n.Hostname()
-		if services[i].Tags == nil {
-			services[i].Tags = []string{}
-		}
-		if services[i].ExpectedPorts == nil {
-			services[i].ExpectedPorts = []uint16{}
-		}
+		services[i].HostName = n.Hostname()
+		services[i].Normalize()
 	}
 	return services, nil
 }
@@ -358,7 +362,7 @@ func (fc *FilesClient) Send(ctx context.Context, req types.SendRequest) (types.S
 		Filename:     req.Filename,
 		ToolName:     req.ToolName,
 		LocalPath:    req.LocalPath,
-		DestMachine:  GetTailkitHostname(fc.node.Hostname()),
+		DestMachine:  tailkitdHostname(fc.node.Hostname()),
 		Success:      false,
 		WrittenTo:    req.DestPath,
 		BytesWritten: 0,
@@ -406,7 +410,7 @@ func (fc *FilesClient) Send(ctx context.Context, req types.SendRequest) (types.S
 	}
 
 	result.LocalPath = req.LocalPath
-	result.DestMachine = GetTailkitHostname(fc.node.Hostname())
+	result.DestMachine = tailkitdHostname(fc.node.Hostname())
 	result.Success = true
 
 	return result, nil

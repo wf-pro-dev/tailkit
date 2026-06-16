@@ -1,4 +1,3 @@
-
 package tailkit
 
 import (
@@ -7,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestAdminClientSendsHeaderAndMapsUnauthorized(t *testing.T) {

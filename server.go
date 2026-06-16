@@ -33,7 +33,7 @@ type Server struct {
 	httpClient       *http.Client
 	streamHTTPClient *http.Client
 
-	peerCache   map[string]peerCacheEntry
+	peerCache   peerCacheEntry
 	peerCacheMu sync.RWMutex
 
 	closeOnce sync.Once
@@ -106,7 +106,6 @@ func newServer(ts *tsnet.Server) *Server {
 		streamHTTPClient: &http.Client{
 			Transport: transport,
 		},
-		peerCache: make(map[string]peerCacheEntry),
 	}
 }
 

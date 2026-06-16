@@ -9,6 +9,13 @@ Tools built with tailkit get consistent auth, peer discovery, and access to node
 
 Recent additions include first-class SSE stream support for exec jobs, Docker logs/stats, systemd journal tails, and metrics streams including TCP listen-port discovery.
 
+Tailkit's shared model is organized around four entities:
+
+- `Peer`: any Tailscale machine in the tailnet
+- `Host`: a peer with an associated `tailkitd-*` sidecar
+- `Service`: a workload on a host, such as a systemd unit, Docker container, script, or tool
+- `Tailkitd`: the `tailkitd-*` tsnet sidecar peer exposing the management API for one host
+
 ---
 
 ## Install
@@ -44,8 +51,8 @@ err = tailkit.Node(srv, "vps-1").Metrics().StreamPorts(ctx, func(e tailkit.Event
 })
 
 // fleet
-peers, err := tailkit.OnlinePeers(ctx, srv)
-cpuByNode, errs := tailkit.Nodes(srv, peers).Metrics().CPU(ctx)
+hosts, err := tailkit.ListHosts(ctx, srv, tailkit.ListOnline)
+cpuByNode, errs := tailkit.Nodes(srv, tailkit.PeersFromHosts(hosts)).Metrics().CPU(ctx)
 ```
 
 ---
