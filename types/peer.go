@@ -8,14 +8,14 @@ import (
 
 // Peer is a tailnet machine identity as reported by Tailscale.
 type Peer struct {
-	ID        string               `json:"id,omitempty"`
-	PublicKey string               `json:"public_key,omitempty"`
-	HostName  string               `json:"host_name,omitempty"`
-	DNSName   string               `json:"dns_name,omitempty"`
-	IPs       []string             `json:"ips"`
-	OS        string               `json:"os,omitempty"`
-	Online    bool                 `json:"online"`
-	Metadata  map[string]string    `json:"metadata,omitempty"`
+	ID        string            `json:"id,omitempty"`
+	PublicKey string            `json:"public_key,omitempty"`
+	HostName  string            `json:"host_name,omitempty"`
+	DNSName   string            `json:"dns_name,omitempty"`
+	IPs       []string          `json:"ips"`
+	OS        string            `json:"os,omitempty"`
+	Online    bool              `json:"online"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
 
 	// Status keeps the raw Tailscale peer payload available for local SDK
 	// enrichment and classification without making it part of the shared wire
