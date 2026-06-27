@@ -36,7 +36,7 @@ srv, err := tailkit.NewServer(tailkit.ServerConfig{
 defer srv.Close()
 
 // register this tool with tailkitd on startup
-tailkit.Install(ctx, types.Tool{Name: "devbox", Version: build.Version, TsnetHost: "devbox"})
+tailkit.Install(ctx, client.Tool{Name: "devbox", Version: build.Version, TsnetHost: "devbox"})
 
 // single node
 containers, err := tailkit.Node(srv, "vps-1").Docker().Containers(ctx)

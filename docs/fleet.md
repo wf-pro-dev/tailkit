@@ -77,5 +77,5 @@ results, errs := tailkit.Broadcast(ctx, srv, tailkit.SendRequest{
     LocalPath: "/home/user/nginx/api.conf",
     DestPath:  "/etc/nginx/conf.d/api.conf",
 })
-// returns []types.SendResult, map[nodeName]error
+// returns []client.SendResult, map[nodeName]error
 ```

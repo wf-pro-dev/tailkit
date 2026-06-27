@@ -22,7 +22,7 @@ if errors.Is(err, tailkit.ErrReceiveNotConfigured) {
 | `tailkit.ErrVarScopeNotFound` | The `project/env` scope is not in `vars.toml` |
 | `tailkit.ErrPermissionDenied` | ACL cap or node config blocked the operation |
 
-These are defined in `github.com/wf-pro-dev/tailkit/types` and re-exported from the root package.
+These are defined in `github.com/wf-pro-dev/tailkit/client` and re-exported from the root package.
 
 ## Availability helpers
 
