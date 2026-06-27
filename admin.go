@@ -1,3 +1,4 @@
+// DEPRACTED
 package tailkit
 
 import (
