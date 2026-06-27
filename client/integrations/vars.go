@@ -1,4 +1,4 @@
-package types
+package client
 
 // VarsConfig is the parsed and validated representation of vars.toml.
 type VarsConfig struct {

@@ -1,4 +1,4 @@
-package types
+package client
 
 // DockerConfig is the parsed and validated representation of docker.toml.
 // Enabled is set to true only after a successful load — absent file means

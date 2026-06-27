@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/wf-pro-dev/tailkit/types"
+	"github.com/wf-pro-dev/tailkit/client"
 )
 
 const (
@@ -42,7 +42,7 @@ func resolveToolsDir() string {
 //   - Each Arg.Pattern (if set) is a valid regular expression
 //
 // It creates /etc/tailkitd/tools/ if it does not exist.
-func Install(ctx context.Context, tool types.Tool) error {
+func Install(ctx context.Context, tool client.Tool) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("tailkit: Install: context cancelled: %w", err)
 	}
@@ -98,7 +98,7 @@ func validName(s string) bool {
 	return nameRE.MatchString(s)
 }
 
-func validateTool(t types.Tool) error {
+func validateTool(t client.Tool) error {
 	if t.Name == "" {
 		return fmt.Errorf("Tool.Name must not be empty")
 	}

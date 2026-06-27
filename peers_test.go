@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wf-pro-dev/tailkit/types"
+	"github.com/wf-pro-dev/tailkit/client"
 	"go4.org/mem"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tailcfg"
@@ -57,11 +57,11 @@ func TestOnlineHostsRequiresReachableSidecar(t *testing.T) {
 }
 
 func TestHostPeersReturnsMachinePeers(t *testing.T) {
-	host := types.Host{
+	host := client.Host{
 		Name: "node-01",
-		Peer: &types.Peer{HostName: "node-01", Online: true},
+		Peer: &client.Peer{HostName: "node-01", Online: true},
 	}
-	peers := PeersFromHosts([]types.Host{host, {Name: "missing-peer"}})
+	peers := PeersFromHosts([]client.Host{host, {Name: "missing-peer"}})
 	if len(peers) != 1 || peers[0].HostName != "node-01" {
 		t.Fatalf("unexpected host peers: %#v", peers)
 	}

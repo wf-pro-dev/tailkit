@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wf-pro-dev/tailkit/types"
+	"github.com/wf-pro-dev/tailkit/client"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/types/key"
 )
@@ -17,16 +17,10 @@ import (
 //   - Peer: peer.Online (tailkitd-* sidecars are always excluded)
 //   - Host: tailkitd sidecar is online and API-reachable
 //   - Tailkitd: sidecar peer is online
-type ListOpts struct {
-	Online bool
-}
 
-var (
-	// ListAll returns every known entry with no online filter.
-	ListAll = ListOpts{}
-	// ListOnline returns only online or reachable entries.
-	ListOnline = ListOpts{Online: true}
-)
+type AgentListOptions struct{ ReachableOnly bool }
+type ServiceListOptions struct {
+}
 
 type peerCacheEntry struct {
 	peers     map[key.NodePublic]*ipnstate.PeerStatus
@@ -36,7 +30,7 @@ type peerCacheEntry struct {
 
 // ListPeers returns tailnet machine peers from local Tailscale status.
 // tailkitd-* sidecar peers are excluded.
-func ListPeers(ctx context.Context, srv *Server, opts *ListOpts) ([]types.Peer, error) {
+func ListPeers(ctx context.Context, srv *Server, opts *client.PeerListOptions) ([]client.Peer, error) {
 
 	if opts == nil {
 		opts.Online = true
@@ -50,7 +44,7 @@ func ListPeers(ctx context.Context, srv *Server, opts *ListOpts) ([]types.Peer, 
 	if !opts.Online {
 		return peers, nil
 	}
-	online := make([]types.Peer, 0, len(peers))
+	online := make([]client.Peer, 0, len(peers))
 	for _, peer := range peers {
 		if peer.Online {
 			online = append(online, peer)
@@ -64,16 +58,17 @@ func ListPeers(ctx context.Context, srv *Server, opts *ListOpts) ([]types.Peer, 
 //
 // Results do not include operator metadata from tailkitd's /host API.
 // Use Node(...).Host or FleetClient.Hosts for that.
-func ListHosts(ctx context.Context, srv *Server, opts ListOpts) ([]types.Host, error) {
+func ListHosts(ctx context.Context, srv *Server, opts *client.HostListOptions) ([]client.Host, error) {
+
 	entry, err := getPeerCache(ctx, srv)
 	if err != nil {
 		return nil, err
 	}
 	hosts := hostsSlice(entry.view.hosts)
-	if !opts.Online {
+	if opts == nil && !opts.Online {
 		return hosts, nil
 	}
-	online := make([]types.Host, 0, len(hosts))
+	online := make([]client.Host, 0, len(hosts))
 	for _, host := range hosts {
 		if hostReachable(host) {
 			online = append(online, host)
@@ -82,21 +77,21 @@ func ListHosts(ctx context.Context, srv *Server, opts ListOpts) ([]types.Host, e
 	return online, nil
 }
 
-// ListTailkitds returns tailkitd-* sidecar peers, including orphans without a
+// ListAgents returns tailkitd-* sidecar peers, including orphans without a
 // matching host peer.
-func ListTailkitds(ctx context.Context, srv *Server, opts ListOpts) ([]types.Tailkitd, error) {
+func ListAgents(ctx context.Context, srv *Server, opts *client.AgentListOptions) ([]client.Tailkitd, error) {
 	entry, err := getPeerCache(ctx, srv)
 	if err != nil {
 		return nil, err
 	}
-	tailkitds := make([]types.Tailkitd, 0, len(entry.view.tailkitds))
+	tailkitds := make([]client.Tailkitd, 0, len(entry.view.tailkitds))
 	for _, tailkitd := range entry.view.tailkitds {
 		tailkitds = append(tailkitds, *tailkitd)
 	}
 	if !opts.Online {
 		return tailkitds, nil
 	}
-	online := make([]types.Tailkitd, 0, len(tailkitds))
+	online := make([]client.Tailkitd, 0, len(tailkitds))
 	for _, tailkitd := range tailkitds {
 		if tailkitd.Peer != nil && tailkitd.Peer.Online {
 			online = append(online, tailkitd)
@@ -107,8 +102,8 @@ func ListTailkitds(ctx context.Context, srv *Server, opts ListOpts) ([]types.Tai
 
 // PeersFromHosts returns machine peers for a host list.
 // It is the usual input shape for tailkit.Nodes.
-func PeersFromHosts(hosts []types.Host) []types.Peer {
-	peers := make([]types.Peer, 0, len(hosts))
+func PeersFromHosts(hosts []client.Host) []client.Peer {
+	peers := make([]client.Peer, 0, len(hosts))
 	for _, host := range hosts {
 		if host.Peer != nil {
 			peers = append(peers, *host.Peer)
@@ -178,16 +173,16 @@ func (s *Server) setCachedPeers(entry peerCacheEntry) {
 // ─── Classification ─────────────────────────────────────────────────────────────
 
 type peerClassification struct {
-	peers     []types.Peer
-	hosts     map[key.NodePublic]*types.Host
-	tailkitds map[key.NodePublic]*types.Tailkitd
+	peers     []client.Peer
+	hosts     map[key.NodePublic]*client.Host
+	tailkitds map[key.NodePublic]*client.Tailkitd
 }
 
 func classifyPeerStatuses(statuses []*ipnstate.PeerStatus) peerClassification {
 	view := peerClassification{
-		peers:     make([]types.Peer, 0, len(statuses)),
-		hosts:     make(map[key.NodePublic]*types.Host),
-		tailkitds: make(map[key.NodePublic]*types.Tailkitd),
+		peers:     make([]client.Peer, 0, len(statuses)),
+		hosts:     make(map[key.NodePublic]*client.Host),
+		tailkitds: make(map[key.NodePublic]*client.Tailkitd),
 	}
 
 	byHostname := make(map[string]*ipnstate.PeerStatus, len(statuses))
@@ -205,10 +200,10 @@ func classifyPeerStatuses(statuses []*ipnstate.PeerStatus) peerClassification {
 		}
 
 		hostName := strings.TrimPrefix(status.HostName, "tailkitd-")
-		tailkitd := &types.Tailkitd{
+		tailkitd := &client.Tailkitd{
 			HostName: hostName,
 			Peer:     peerPtrFromStatus(status),
-			Services: []types.Service{},
+			Services: []client.Service{},
 		}
 		view.tailkitds[status.PublicKey] = tailkitd
 
@@ -217,7 +212,7 @@ func classifyPeerStatuses(statuses []*ipnstate.PeerStatus) peerClassification {
 			continue
 		}
 		hostPeer := peerPtrFromStatus(hostStatus)
-		view.hosts[hostStatus.PublicKey] = &types.Host{
+		view.hosts[hostStatus.PublicKey] = &client.Host{
 			Name:       hostName,
 			Tags:       []string{},
 			Metadata:   map[string]string{},
@@ -238,12 +233,12 @@ func isTailkitdSidecar(hostname string) bool {
 	return strings.HasPrefix(hostname, "tailkitd-")
 }
 
-func hostReachable(host types.Host) bool {
+func hostReachable(host client.Host) bool {
 	return host.Tailkitd != nil && host.Tailkitd.Peer != nil && host.Tailkitd.Peer.Online
 }
 
-func machinePeers(peers []types.Peer) []types.Peer {
-	machines := make([]types.Peer, 0, len(peers))
+func machinePeers(peers []client.Peer) []client.Peer {
+	machines := make([]client.Peer, 0, len(peers))
 	for _, peer := range peers {
 		if isTailkitdSidecar(peer.HostName) {
 			continue
@@ -253,15 +248,15 @@ func machinePeers(peers []types.Peer) []types.Peer {
 	return machines
 }
 
-func hostsSlice(hosts map[key.NodePublic]*types.Host) []types.Host {
-	out := make([]types.Host, 0, len(hosts))
+func hostsSlice(hosts map[key.NodePublic]*client.Host) []client.Host {
+	out := make([]client.Host, 0, len(hosts))
 	for _, host := range hosts {
 		out = append(out, *host)
 	}
 	return out
 }
 
-func peerHostname(peer types.Peer) string {
+func peerHostname(peer client.Peer) string {
 	if peer.HostName != "" {
 		return peer.HostName
 	}
@@ -279,20 +274,20 @@ func peerStatusSlice(peers map[key.NodePublic]*ipnstate.PeerStatus) []*ipnstate.
 	return statuses
 }
 
-func peerPtrFromStatus(status *ipnstate.PeerStatus) *types.Peer {
+func peerPtrFromStatus(status *ipnstate.PeerStatus) *client.Peer {
 	peer := peerFromStatus(status)
 	return &peer
 }
 
-func peerFromStatus(status *ipnstate.PeerStatus) types.Peer {
+func peerFromStatus(status *ipnstate.PeerStatus) client.Peer {
 	if status == nil {
-		return types.Peer{IPs: []string{}}
+		return client.Peer{IPs: []string{}}
 	}
 	ips := make([]string, 0, len(status.TailscaleIPs))
 	for _, ip := range status.TailscaleIPs {
 		ips = append(ips, ip.String())
 	}
-	return types.Peer{
+	return client.Peer{
 		ID:        string(status.ID),
 		PublicKey: status.PublicKey.String(),
 		HostName:  status.HostName,

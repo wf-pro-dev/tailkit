@@ -1,4 +1,4 @@
-package types
+package client
 
 // ─── Tool registration types ──────────────────────────────────────────────────
 

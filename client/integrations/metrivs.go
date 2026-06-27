@@ -1,4 +1,4 @@
-package types
+package client
 
 // MetricsConfig is the parsed and validated representation of metrics.toml.
 //

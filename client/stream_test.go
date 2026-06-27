@@ -1,4 +1,4 @@
-package tailkit
+package client
 
 import (
 	"context"
@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-
-	"github.com/wf-pro-dev/tailkit/types"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -46,7 +44,7 @@ func TestStreamUsesStreamHTTPClient(t *testing.T) {
 	}
 
 	calls := 0
-	err := Stream(context.Background(), node, "/metrics/cpu/stream", []string{EventCPU}, func(event types.Event[types.CPU]) error {
+	err := Stream(context.Background(), node, "/metrics/cpu/stream", []string{EventCPU}, func(event Event[CPU]) error {
 		calls++
 		return nil
 	})

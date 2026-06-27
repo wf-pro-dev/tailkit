@@ -1,27 +1,27 @@
 package tailkit
 
-import "github.com/wf-pro-dev/tailkit/types"
+import "github.com/wf-pro-dev/tailkit/client"
 
 type (
-	CPU                 = types.CPU
-	Event[T any]        = types.Event[T]
-	Host                = types.Host
-	JournalEntry        = types.JournalEntry
-	JobUpdate           = types.JobUpdate
-	LogLine             = types.LogLine
-	Memory              = types.Memory
-	Metrics             = types.Metrics
-	Peer                = types.Peer
-	Port                = types.Port
-	PortUpdate          = types.PortUpdate
-	Process             = types.Process
-	Service             = types.Service
-	ServiceCapabilities = types.ServiceCapabilities
-	ServiceStatus       = types.ServiceStatus
-	Tailkitd            = types.Tailkitd
+	CPU                 = client.CPU
+	Event[T any]        = client.Event[T]
+	Host                = client.Host
+	JournalEntry        = client.JournalEntry
+	JobUpdate           = client.JobUpdate
+	LogLine             = client.LogLine
+	Memory              = client.Memory
+	Metrics             = client.Metrics
+	Peer                = client.Peer
+	Port                = client.Port
+	PortUpdate          = client.PortUpdate
+	Process             = client.Process
+	Service             = client.Service
+	ServiceCapabilities = client.ServiceCapabilities
+	ServiceStatus       = client.ServiceStatus
+	Tailkitd            = client.Tailkitd
 )
 
 var (
-	ErrConflict     = types.ErrConflict
-	ErrUnauthorized = types.ErrUnauthorized
+	ErrConflict     = client.ErrConflict
+	ErrUnauthorized = client.ErrUnauthorized
 )

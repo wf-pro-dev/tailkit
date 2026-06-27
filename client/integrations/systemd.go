@@ -1,4 +1,4 @@
-package types
+package client
 
 // SystemdConfig is the parsed and validated representation of systemd.toml.
 type SystemdConfig struct {
