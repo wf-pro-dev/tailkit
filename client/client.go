@@ -34,6 +34,13 @@ type Image = image.Summary
 // SwarmStatus aliases the Docker SDK swarm info.
 type SwarmStatus = swarm.Swarm
 
+type SwarwService = swarm.Service
+
+type SwarmUpdate struct {
+	SwarmID []string
+	Servies []swarm.Service
+}
+
 // SystemdUnit aliases the CoreOS D-Bus unit status.
 type SystemdUnit = dbus.UnitStatus
 
@@ -250,12 +257,12 @@ func (h HostsScope) Metrics() FleetMetricsScope {
 type FleetVarsScope struct {
 	Backend   ClientBackend
 	Hostnames []string
-	Project   string
+	Service   string
 	Env       string
 }
 
 func (fv FleetVarsScope) scopePath() string {
-	return fmt.Sprintf("/vars/%s/%s", url.PathEscape(fv.Project), url.PathEscape(fv.Env))
+	return fmt.Sprintf("/vars/%s/%s", url.PathEscape(fv.Service), url.PathEscape(fv.Env))
 }
 
 func (fv FleetVarsScope) Config(ctx context.Context) (map[string]integrations.VarsConfig, map[string]error) {
@@ -284,8 +291,8 @@ func (fv FleetVarsScope) Set(ctx context.Context, key, value string) map[string]
 	return errs
 }
 
-func (h HostsScope) Vars(project, env string) FleetVarsScope {
-	return FleetVarsScope{Backend: h.Backend, Hostnames: h.Hostnames, Project: project, Env: env}
+func (h HostsScope) Vars(Service, env string) FleetVarsScope {
+	return FleetVarsScope{Backend: h.Backend, Hostnames: h.Hostnames, Service: Service, Env: env}
 }
 
 type AgentsScope struct {
@@ -313,6 +320,26 @@ func (s ServicesScope) List(ctx context.Context, opts ...AgentListOptions) (map[
 		err := s.Backend.Do(ctx, hostname, "GET", "/services", nil, &services)
 		return services, err
 	})
+}
+
+func (s ServicesScope) Ports(ctx context.Context) ([]Port, error) {
+
+	var allPorts []Port
+	var lock sync.Mutex
+
+	_, _ = FanOut(ctx, s.TargetIDs, func(ctx context.Context, hostname string) ([]Port, error) {
+
+		var ports []Port
+		err := s.Backend.Do(ctx, hostname, "GET", "/services/ports", nil, &ports)
+		lock.Lock()
+		defer lock.Unlock()
+
+		allPorts = append(allPorts, ports...)
+		return ports, err
+	})
+
+	return allPorts, nil
+
 }
 
 // ==========================================
@@ -354,8 +381,8 @@ func (h HostScope) Files() FilesScope { return FilesScope{Backend: h.Backend, Ho
 func (h HostScope) Metrics() MetricsScope {
 	return MetricsScope{Backend: h.Backend, Hostname: h.Hostname}
 }
-func (h HostScope) Vars(project, env string) VarsScope {
-	return VarsScope{Backend: h.Backend, Hostname: h.Hostname, Project: project, Env: env}
+func (h HostScope) Vars(Service, env string) VarsScope {
+	return VarsScope{Backend: h.Backend, Hostname: h.Hostname, Service: Service, Env: env}
 }
 
 // ==========================================
@@ -380,12 +407,30 @@ func (d DockerScope) Container(id string) ContainerScope {
 	return ContainerScope{Backend: d.Backend, Hostname: d.Hostname, ContainerID: id}
 }
 
+func (d DockerScope) Config(ctx context.Context) (integrations.DockerConfig, error) {
+	path := fmt.Sprintf("/docker/config")
+	var config integrations.DockerConfig
+	err := d.Backend.Do(ctx, d.Hostname, "GET", path, nil, &config)
+	if err != nil {
+		return integrations.DockerConfig{}, err
+	}
+	return config, nil
+}
+
 func (d DockerScope) Stream(ctx context.Context, fn func(Event[DockerEvent]) error) error {
 	body, err := d.Backend.Stream(ctx, d.Hostname, "GET", "/integrations/docker/stream")
 	if err != nil {
 		return err
 	}
 	return StreamEvents(ctx, body, []string{EventDockerAll}, fn)
+}
+
+func (d ContainerScope) Stream(ctx context.Context, fn func(Event[DockerEvent]) error) error {
+	body, err := d.Backend.Stream(ctx, d.Hostname, "GET", fmt.Sprintf("/integrations/docker/containers/%s/stream", d.ContainerID))
+	if err != nil {
+		return err
+	}
+	return StreamEvents(ctx, body, []string{EventDockerContainer}, fn)
 }
 
 // Containers
@@ -484,57 +529,57 @@ type ComposeScope struct {
 	Hostname string
 }
 
-func (c ComposeScope) Projects(ctx context.Context) ([]ComposeService, error) {
+func (c ComposeScope) Services(ctx context.Context) ([]ComposeService, error) {
 	var out []ComposeService
-	err := c.Backend.Do(ctx, c.Hostname, "GET", "/integrations/docker/compose/projects", nil, &out)
+	err := c.Backend.Do(ctx, c.Hostname, "GET", "/integrations/docker/compose/Services", nil, &out)
 	return out, err
 }
-func (c ComposeScope) Project(name string) ComposeProjectScope {
-	return ComposeProjectScope{Backend: c.Backend, Hostname: c.Hostname, ProjectName: name}
+func (c ComposeScope) Service(name string) ComposeServicescope {
+	return ComposeServicescope{Backend: c.Backend, Hostname: c.Hostname, ServiceName: name}
 }
 
-type ComposeProjectScope struct {
+type ComposeServicescope struct {
 	Backend     ClientBackend
 	Hostname    string
-	ProjectName string
+	ServiceName string
 }
 
-func (c ComposeProjectScope) Get(ctx context.Context) (ComposeService, error) {
+func (c ComposeServicescope) Get(ctx context.Context) (ComposeService, error) {
 	var out ComposeService
-	path := fmt.Sprintf("/integrations/docker/compose/%s", url.PathEscape(c.ProjectName))
+	path := fmt.Sprintf("/integrations/docker/compose/%s", url.PathEscape(c.ServiceName))
 	err := c.Backend.Do(ctx, c.Hostname, "GET", path, nil, &out)
 	return out, err
 }
-func (c ComposeProjectScope) Up(ctx context.Context, composeFile string) (Job, error) {
+func (c ComposeServicescope) Up(ctx context.Context, composeFile string) (Job, error) {
 	var out Job
-	path := fmt.Sprintf("/integrations/docker/compose/%s/up", url.PathEscape(c.ProjectName))
+	path := fmt.Sprintf("/integrations/docker/compose/%s/up", url.PathEscape(c.ServiceName))
 	if composeFile != "" {
 		path += "?file=" + url.QueryEscape(composeFile)
 	}
 	err := c.Backend.Do(ctx, c.Hostname, "POST", path, nil, &out)
 	return out, err
 }
-func (c ComposeProjectScope) Down(ctx context.Context) (Job, error) {
+func (c ComposeServicescope) Down(ctx context.Context) (Job, error) {
 	var out Job
-	path := fmt.Sprintf("/integrations/docker/compose/%s/down", url.PathEscape(c.ProjectName))
+	path := fmt.Sprintf("/integrations/docker/compose/%s/down", url.PathEscape(c.ServiceName))
 	err := c.Backend.Do(ctx, c.Hostname, "POST", path, nil, &out)
 	return out, err
 }
-func (c ComposeProjectScope) Pull(ctx context.Context) (Job, error) {
+func (c ComposeServicescope) Pull(ctx context.Context) (Job, error) {
 	var out Job
-	path := fmt.Sprintf("/integrations/docker/compose/%s/pull", url.PathEscape(c.ProjectName))
+	path := fmt.Sprintf("/integrations/docker/compose/%s/pull", url.PathEscape(c.ServiceName))
 	err := c.Backend.Do(ctx, c.Hostname, "POST", path, nil, &out)
 	return out, err
 }
-func (c ComposeProjectScope) Restart(ctx context.Context) (Job, error) {
+func (c ComposeServicescope) Restart(ctx context.Context) (Job, error) {
 	var out Job
-	path := fmt.Sprintf("/integrations/docker/compose/%s/restart", url.PathEscape(c.ProjectName))
+	path := fmt.Sprintf("/integrations/docker/compose/%s/restart", url.PathEscape(c.ServiceName))
 	err := c.Backend.Do(ctx, c.Hostname, "POST", path, nil, &out)
 	return out, err
 }
-func (c ComposeProjectScope) Build(ctx context.Context) (Job, error) {
+func (c ComposeServicescope) Build(ctx context.Context) (Job, error) {
 	var out Job
-	path := fmt.Sprintf("/integrations/docker/compose/%s/build", url.PathEscape(c.ProjectName))
+	path := fmt.Sprintf("/integrations/docker/compose/%s/build", url.PathEscape(c.ServiceName))
 	err := c.Backend.Do(ctx, c.Hostname, "POST", path, nil, &out)
 	return out, err
 }
@@ -556,6 +601,31 @@ func (s SwarmScope) Status(ctx context.Context) (SwarmStatus, error) {
 	var out SwarmStatus
 	err := s.Backend.Do(ctx, s.Hostname, "GET", "/integrations/docker/swarm", nil, &out)
 	return out, err
+}
+
+type SwarmServicesNamespace struct {
+	Backend  ClientBackend
+	Hostname string
+}
+
+func (s SwarmScope) Services() SwarmServicesNamespace {
+	return SwarmServicesNamespace{Backend: s.Backend, Hostname: s.Hostname}
+}
+
+func (s SwarmServicesNamespace) List(ctx context.Context) ([]SwarwService, error) {
+	var out []SwarwService
+	err := s.Backend.Do(ctx, s.Hostname, "GET", "/integrations/docker/swarm/services", nil, &out)
+	return out, err
+}
+
+type SwarmStreamScope struct {
+	ID       string
+	Backend  ClientBackend
+	Hostname string
+}
+
+func (s SwarmScope) Stream() SwarmStreamScope {
+	return SwarmStreamScope{Backend: s.Backend, Hostname: s.Hostname}
 }
 
 // Systemd
@@ -644,18 +714,38 @@ func (u UnitScope) Journal(ctx context.Context, lines int) ([]JournalEntry, erro
 	err := u.Backend.Do(ctx, u.Hostname, "GET", path, nil, &out)
 	return out, err
 }
-func (s SystemdScope) StreamSystemJournal(ctx context.Context, lines int, fn func(Event[JournalEntry]) error) error {
-	path := fmt.Sprintf("/integrations/systemd/journal?lines=%d&follow=true", lines)
-	body, err := s.Backend.Stream(ctx, s.Hostname, "GET", path)
+
+type UnitStreamScope struct {
+	Backend  ClientBackend
+	Hostname string
+	UnitName string
+}
+
+func (u UnitScope) Stream() UnitStreamScope {
+	return UnitStreamScope{Backend: u.Backend, Hostname: u.Hostname, UnitName: u.UnitName}
+}
+
+func (u UnitStreamScope) Journal(ctx context.Context, lines int, fn func(Event[JournalEntry]) error) error {
+	path := fmt.Sprintf("/integrations/systemd/units/%s/journal?lines=%d&follow=true", url.PathEscape(u.UnitName), lines)
+	body, err := u.Backend.Stream(ctx, u.Hostname, "GET", path)
 	if err != nil {
 		return err
 	}
 	return StreamEvents(ctx, body, []string{EventJournalEntry}, fn)
 }
 
-func (u UnitScope) StreamJournal(ctx context.Context, lines int, fn func(Event[JournalEntry]) error) error {
-	path := fmt.Sprintf("/integrations/systemd/units/%s/journal?lines=%d&follow=true", url.PathEscape(u.UnitName), lines)
-	body, err := u.Backend.Stream(ctx, u.Hostname, "GET", path)
+type SystemdStreamScope struct {
+	Backend  ClientBackend
+	Hostname string
+}
+
+func (s SystemdScope) Stream() SystemdStreamScope {
+	return SystemdStreamScope{Backend: s.Backend, Hostname: s.Hostname}
+}
+
+func (s SystemdStreamScope) System(ctx context.Context, lines int, fn func(Event[JournalEntry]) error) error {
+	path := fmt.Sprintf("/integrations/systemd/journal?lines=%d&follow=true", lines)
+	body, err := s.Backend.Stream(ctx, s.Hostname, "GET", path)
 	if err != nil {
 		return err
 	}
@@ -768,7 +858,22 @@ func (m MetricsScope) Network(ctx context.Context) ([]Network, error) {
 	return out, err
 }
 
-func (m MetricsScope) StreamCPU(ctx context.Context, fn func(Event[CPU]) error) error {
+func (m MetricsScope) Ports(ctx context.Context) ([]Port, error) {
+	var out []Port
+	err := m.Backend.Do(ctx, m.Hostname, "GET", "/integrations/metrics/ports", nil, &out)
+	return out, err
+}
+
+type MetricsStreamScope struct {
+	Backend  ClientBackend
+	Hostname string
+}
+
+func (m MetricsScope) Stream() MetricsStreamScope {
+	return MetricsStreamScope{Backend: m.Backend, Hostname: m.Hostname}
+}
+
+func (m MetricsStreamScope) CPU(ctx context.Context, fn func(Event[CPU]) error) error {
 	body, err := m.Backend.Stream(ctx, m.Hostname, "GET", "/integrations/metrics/cpu/stream")
 	if err != nil {
 		return err
@@ -776,7 +881,7 @@ func (m MetricsScope) StreamCPU(ctx context.Context, fn func(Event[CPU]) error) 
 	return StreamEvents(ctx, body, []string{EventCPU}, fn)
 }
 
-func (m MetricsScope) StreamMemory(ctx context.Context, fn func(Event[Memory]) error) error {
+func (m MetricsStreamScope) Memory(ctx context.Context, fn func(Event[Memory]) error) error {
 	body, err := m.Backend.Stream(ctx, m.Hostname, "GET", "/integrations/metrics/memory/stream")
 	if err != nil {
 		return err
@@ -784,7 +889,15 @@ func (m MetricsScope) StreamMemory(ctx context.Context, fn func(Event[Memory]) e
 	return StreamEvents(ctx, body, []string{EventMemory}, fn)
 }
 
-func (m MetricsScope) StreamAll(ctx context.Context, fn func(Event[Metrics]) error) error {
+func (m MetricsStreamScope) Ports(ctx context.Context, fn func(Event[PortUpdate]) error) error {
+	body, err := m.Backend.Stream(ctx, m.Hostname, "GET", "/integrations/metrics/ports/stream")
+	if err != nil {
+		return err
+	}
+	return StreamEvents(ctx, body, []string{EventPortBound, EventPortReleased, EventPortsSnapshot}, fn)
+}
+
+func (m MetricsScope) All(ctx context.Context, fn func(Event[Metrics]) error) error {
 	body, err := m.Backend.Stream(ctx, m.Hostname, "GET", "/integrations/metrics/all/stream")
 	if err != nil {
 		return err
@@ -796,12 +909,12 @@ func (m MetricsScope) StreamAll(ctx context.Context, fn func(Event[Metrics]) err
 type VarsScope struct {
 	Backend  ClientBackend
 	Hostname string
-	Project  string
+	Service  string
 	Env      string
 }
 
 func (v VarsScope) scopePath() string {
-	return fmt.Sprintf("/vars/%s/%s", url.PathEscape(v.Project), url.PathEscape(v.Env))
+	return fmt.Sprintf("/vars/%s/%s", url.PathEscape(v.Service), url.PathEscape(v.Env))
 }
 
 func (v VarsScope) List(ctx context.Context) (map[string]string, error) {
