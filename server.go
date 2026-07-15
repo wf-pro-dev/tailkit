@@ -22,6 +22,7 @@ type ServerConfig struct {
 	StateDir     string
 	Ephemeral    bool
 	PeerCacheTTL time.Duration
+	ControlURL   string
 }
 
 // Server is a tailkit-managed tsnet server.
@@ -60,11 +61,17 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		stateDir = base + "/tailkit/" + cfg.Hostname
 	}
 
+	controlURL := os.Getenv("TS_CONTROL_URL")
+	if controlURL == "" {
+		controlURL = cfg.ControlURL
+	}
+
 	ts := &tsnet.Server{
-		Hostname:  cfg.Hostname,
-		AuthKey:   authKey,
-		Dir:       stateDir,
-		Ephemeral: cfg.Ephemeral,
+		Hostname:   cfg.Hostname,
+		AuthKey:    authKey,
+		Dir:        stateDir,
+		Ephemeral:  cfg.Ephemeral,
+		ControlURL: controlURL,
 	}
 
 	if err := ts.Start(); err != nil {
